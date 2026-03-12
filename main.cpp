@@ -6,7 +6,7 @@ int main(int argc, char** argv) {
     dcl::Runtime runtime(argc, argv);
     int rank = runtime.rank();
 
-    runtime.init_devices(dcl::DeviceTag::GPU, 2); 
+    runtime.init_devices(dcl::DeviceTag::ALL, 2, true); 
 
     size_t N = 1024*2048; 
     std::vector<float> h_input(N, 1.0f);

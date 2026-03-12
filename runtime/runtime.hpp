@@ -15,7 +15,7 @@ namespace dcl {
         Runtime(int &argc, char** &argv);
         ~Runtime();
 
-        void init_devices(DeviceTag tag, int max_devs);
+        void init_devices(DeviceTag tag, int max_devs, bool verbose = false);
         void create_kernel(const std::string& file, const std::string& name);
         
         int create_buffer(size_t total_elements, cl_mem_flags flags);

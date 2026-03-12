@@ -4,88 +4,94 @@
 
 namespace dcl {
 
-void DeviceManager::initialize(DeviceTag tag, int max_devices) {
-    cl_uint num_platforms;
-    cl_int err = clGetPlatformIDs(0, nullptr, &num_platforms);
+void DeviceManager::initialize(DeviceTag tag, int max_devices, bool verbose) {
+    cl_int state;
+    cl_uint numPlatforms = 0;
     
-    if (err != CL_SUCCESS || num_platforms == 0) {
-        std::cerr << "[DCL ERROR] Nenhuma plataforma OpenCL encontrada." << std::endl;
+    // 1) Obter todas as plataformas disponíveis
+    // Usamos um valor alto (ex: 10) para garantir que pegamos Intel, NVIDIA, AMD, etc.
+    cl_platform_id platformIDs[10];
+    state = clGetPlatformIDs(10, platformIDs, &numPlatforms);
+    if (state != CL_SUCCESS || numPlatforms == 0) {
+        if (verbose) std::cerr << "OpenCL Error: Platforms couldn't be found." << std::endl;
         return;
     }
 
-    std::vector<cl_platform_id> platforms(num_platforms);
-    clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
+    // 2) Definir o tipo de dispositivo (Inspirado no seu device_types.compare)
+    cl_device_type selType = CL_DEVICE_TYPE_ALL;
+    if (tag == DeviceTag::GPU) selType = CL_DEVICE_TYPE_GPU;
+    else if (tag == DeviceTag::CPU) selType = CL_DEVICE_TYPE_CPU;
 
-    // Mapeamento da Tag para o tipo de dispositivo OpenCL
-    cl_device_type type = (tag == DeviceTag::GPU) ? CL_DEVICE_TYPE_GPU : 
-                          (tag == DeviceTag::CPU) ? CL_DEVICE_TYPE_CPU : 
-                                                    CL_DEVICE_TYPE_ALL;
-
-    for (auto p : platforms) {
-        std::vector<cl_device_id> platform_devices;
-        cl_uint dev_count;
-        cl_device_id ids[10]; 
+    // 3) Loop por TODAS as plataformas (Removido o break anterior)
+    for (cl_uint p = 0; p < numPlatforms; ++p) {
+        cl_uint cnt = 0;
+        cl_device_id tmp[10]; // Máximo de dispositivos por plataforma
         
-        // Busca dispositivos do tipo solicitado nesta plataforma
-        err = clGetDeviceIDs(p, type, 10, ids, &dev_count);
-        if (err != CL_SUCCESS || dev_count == 0) continue;
+        state = clGetDeviceIDs(platformIDs[p], selType, 10, tmp, &cnt);
+        if (state != CL_SUCCESS || cnt == 0) continue;
 
-        // Limita ao número máximo solicitado pelo usuário
-        for (cl_uint i = 0; i < dev_count && platform_devices.size() < (size_t)max_devices; ++i) {
-            platform_devices.push_back(ids[i]);
+        // Criar um contexto para todos os dispositivos desta plataforma específica
+        cl_context_properties props[] = {
+            CL_CONTEXT_PLATFORM, (cl_context_properties)platformIDs[p],
+            0
+        };
+        cl_context ctx = clCreateContext(props, cnt, tmp, NULL, NULL, &state);
+        
+        if (state != CL_SUCCESS) continue;
+
+        // 4) Criar a fila de comando (Command Queue) com Profiling
+        // Seguindo sua lib: uma fila por contexto (que atende ao primeiro device tmp[0])
+        cl_queue_properties q_props[] = {CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0};
+        cl_command_queue queue = clCreateCommandQueueWithProperties(ctx, tmp[0], q_props, &state);
+        
+        if (state != CL_SUCCESS) {
+            // Fallback OpenCL 1.2 como na sua lib antiga
+            queue = clCreateCommandQueue(ctx, tmp[0], CL_QUEUE_PROFILING_ENABLE, &state);
         }
 
-        if (platform_devices.empty()) continue;
-
-        // 1. PROPRIEDADES DO CONTEXTO (Usa cl_context_properties)
-        cl_context_properties ctx_props[] = { 
-            CL_CONTEXT_PLATFORM, (cl_context_properties)p, 
-            0 
-        };
-
-        cl_context shared_ctx = clCreateContext(ctx_props, (cl_uint)platform_devices.size(), 
-                                               platform_devices.data(), nullptr, nullptr, &err);
-        
-        if (err != CL_SUCCESS) {
-            std::cerr << "[DCL ERROR] Falha ao criar contexto compartilhado: " << err << std::endl;
-            continue;
-        }
-
-        // 2. PROPRIEDADES DA FILA (Usa cl_queue_properties)
-        // O erro C167 ocorria aqui por usar ctx_props em vez de q_props
-        const cl_queue_properties q_props[] = { 
-            CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 
-            0 
-        };
-
-        for (auto d_id : platform_devices) {
+        // 5) Adicionar cada dispositivo ao nosso gerenciador local
+        for (cl_uint j = 0; j < cnt && m_local_devices.size() < (size_t)max_devices; ++j) {
             Device dev;
-            dev.deviceID = d_id;
-            dev.context = shared_ctx; // Todos compartilham o mesmo contexto no nó
+            dev.deviceID = tmp[j];
+            dev.context = ctx;
+            dev.kernelQueue = queue; // Mesma fila para kernel e data como na lib antiga
+            dev.dataQueue = queue;
+            dev.program = NULL;
 
-            // Criar filas individuais para Kernel e Data com Profiling Habilitado
-            dev.kernelQueue = clCreateCommandQueueWithProperties(shared_ctx, d_id, q_props, &err);
-            dev.dataQueue = clCreateCommandQueueWithProperties(shared_ctx, d_id, q_props, &err);
-            
-            if (err != CL_SUCCESS) {
-                std::cerr << "[DCL ERROR] Falha ao criar filas para o dispositivo: " << err << std::endl;
-                continue;
+            // Obter metadados para o verbose e balanceamento
+            char name[128];
+            clGetDeviceInfo(tmp[j], CL_DEVICE_NAME, sizeof(name), name, NULL);
+            clGetDeviceInfo(tmp[j], CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(dev.computeUnits), &dev.computeUnits, NULL);
+
+            if (verbose) {
+                printf("[DCL INFO] Rank %d - Device (%zu): %s, CUs=%u\n", 
+                       m_rank, m_local_devices.size(), name, dev.computeUnits);
             }
 
-            // Coleta informações de hardware para o balanceamento de carga (TCC)
-            clGetDeviceInfo(d_id, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(dev.computeUnits), &dev.computeUnits, nullptr);
-            
             m_local_devices.push_back(dev);
         }
-
-        // Uma vez que configuramos uma plataforma com sucesso, interrompemos a busca
-        if (!m_local_devices.empty()) break;
     }
 
-    if (m_local_devices.empty()) {
-        std::cerr << "[DCL WARNING] Nenhum dispositivo inicializado para a Tag selecionada." << std::endl;
-    } else {
-        std::cout << "[DCL INFO] " << m_local_devices.size() << " dispositivo(s) inicializado(s) no Rank." << std::endl;
+    // 6) Lógica de Sincronização MPI (Igual ao seu InitDevices)
+    int local_count = (int)m_local_devices.size();
+    int world_size;
+    MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+    
+    std::vector<int> devicesWorld(world_size, 0);
+    // Usamos Allgather para que todos saibam quantos dispositivos cada rank tem
+    MPI_Allgather(&local_count, 1, MPI_INT, devicesWorld.data(), 1, MPI_INT, MPI_COMM_WORLD);
+
+    int todosDispositivos = 0;
+    for (int count = 0; count < world_size; count++) {
+        if (count == m_rank) {
+            m_offset = todosDispositivos; // meusDispositivosOffset
+            m_length = devicesWorld[count]; // meusDispositivosLength
+        }
+        todosDispositivos += devicesWorld[count];
+    }
+
+    if (verbose && m_rank == 0) {
+        printf("[DCL INFO] Total de dispositivos no Cluster: %d\n", todosDispositivos);
     }
 }
 

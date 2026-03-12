@@ -52,8 +52,8 @@ Runtime::~Runtime() {
     MPI_Finalize();
 }
 
-void Runtime::init_devices(DeviceTag tag, int max_devs) {
-    m_dev_mgr->initialize(tag, max_devs);
+void Runtime::init_devices(DeviceTag tag, int max_devs, bool verbose) {
+    m_dev_mgr->initialize(tag, max_devs, verbose);
 }
 
 void Runtime::create_kernel(const std::string& file, const std::string& name) {

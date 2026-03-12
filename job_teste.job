@@ -7,7 +7,7 @@
 #PBS -o job_1.out
 
 # Total number of nodes and MPI tasks/node requested
-#PBS -l nodes=compute-0-2:ppn=8+compute-0-3:ppn=8+compute-3-5:ppn=8+compute-3-4:ppn=8
+#PBS -l nodes=compute-0-2:ppn=8
 
 # Run time (hh:mm:ss) - 1.5 hours
 #PBS -l walltime=01:30:00
@@ -22,4 +22,4 @@ cat machines2
 
 export LD_LIBRARY_PATH=/share/apps/AMDAPPSDK-3.0/lib/x86_64/:$LD_LIBRARY_PATH
 # Launch MPI-based executable
-/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 4 -machinefile machines2 ./b.out
+/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 1 -machinefile machines2 ./b.out

@@ -1,0 +1,112 @@
+compute-0-2.localdomain
+compute-0-2.localdomain
+compute-0-2.localdomain
+compute-0-2.localdomain
+compute-0-2.localdomain
+compute-0-2.localdomain
+compute-0-2.localdomain
+compute-0-2.localdomain
+compute-0-2.localdomain
+[DCL INFO] Dispositivo 0 encontrado: NVIDIA RTX A2000 12GB (26 Compute Units)
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.089088 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.080864 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078816 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079840 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077856 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.077824 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079840 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.078848 ms
+Aguardando conclusao de todos os dispositivos...
+[DCL][Rank 0][Dev 0] Kernel finalizado. Carga: 2097152 | Tempo: 0.079872 ms
+Resultado final no centro: 5.82811
