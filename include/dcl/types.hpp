@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -54,16 +55,10 @@ struct ScalarArg {
 
     ScalarArg() = default;
 
-    template <typename T>
-    static ScalarArg from(const T& value) {
-        ScalarArg s;
-        s.bytes.resize(sizeof(T));
-        const unsigned char* src =
-            reinterpret_cast<const unsigned char*>(&value);
-        for (std::size_t i = 0; i < sizeof(T); ++i) {
-            s.bytes[i] = src[i];
-        }
-        return s;
+    template <typename T,
+              typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
+    ScalarArg(const T& value) : bytes(sizeof(T)) {
+        std::memcpy(bytes.data(), &value, sizeof(T));
     }
 };
 
