@@ -1,3 +1,4 @@
+
 #ifndef DCL_TYPES_HPP
 #define DCL_TYPES_HPP
 
@@ -10,7 +11,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
+#include <type_traits>
 #include <mpi.h>
 
 namespace dcl {
@@ -33,13 +34,11 @@ enum class BufferUsage {
     read_write
 };
 
-enum class BalanceMode {
-    off,
-    on
-};
 
-struct BufferHandle {
-    int value{-1};
+enum class RedistributionDependency {
+    none,
+    proportional,
+    total
 };
 
 struct FieldHandle {
@@ -55,14 +54,13 @@ struct ScalarArg {
 
     ScalarArg() = default;
 
-    template <typename T,
-              typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
+    template <typename T, typename = std::enable_if_t<std::is_trivially_copyable_v<T>>>
     ScalarArg(const T& value) : bytes(sizeof(T)) {
         std::memcpy(bytes.data(), &value, sizeof(T));
     }
 };
 
-using KernelArg = std::variant<BufferHandle, FieldHandle, ScalarArg>;
+using KernelArg = std::variant<FieldHandle, ScalarArg>;
 
 struct DeviceSelection {
     DeviceKind kind{DeviceKind::all};
@@ -86,20 +84,20 @@ struct DevicePartition {
     std::size_t element_count{0};
 };
 
-struct BufferSpec {
-    std::string name;
-    std::size_t bytes{0};
-    BufferUsage usage{BufferUsage::read_write};
-    const void* host_ptr{nullptr};
+struct DeviceTiming {
+    double kernel_seconds_last{0.0};
+    double kernel_seconds_avg{0.0};
+    std::uint64_t samples{0};
 };
 
 struct FieldSpec {
     std::string name;
-    std::size_t global_elements{0};
-    std::size_t units_per_element{0};
-    std::size_t bytes_per_unit{0};
-    BufferUsage usage{BufferUsage::read_write};
-    const void* host_ptr{nullptr};
+    std::size_t global_elements = 0;
+    std::size_t units_per_element = 0;
+    std::size_t bytes_per_unit = 0;
+    BufferUsage usage = BufferUsage::read_write;
+    const void* host_ptr = nullptr;
+    RedistributionDependency redistribution = RedistributionDependency::proportional;
 };
 
 struct KernelSpec {
@@ -112,7 +110,7 @@ struct PartitionSpec {
     std::size_t global_elements{0};
     std::size_t units_per_element{0};
     std::size_t bytes_per_unit{0};
-    std::size_t halo_width_elements{0};
+    std::size_t granularity{1};
 };
 
 struct LaunchGeometry {
@@ -136,9 +134,43 @@ struct HaloSpec {
     std::vector<FieldHandle> fields;
 };
 
+enum class BalanceMode {
+    off,
+    static_threshold,
+    dynamic_threshold,
+    static_profiled,
+    dynamic_profiled
+};
+
 struct AutoBalancePolicy {
     BalanceMode mode{BalanceMode::off};
+
+    // dynamic: rebalance a cada N iterações
+    // static: warmup de N iterações, tenta rebalancear uma única vez
     int interval{0};
+
+    // threshold em norma L2 de cargas (ex.: 0.05)
+    float threshold{0.0f};
+
+    // número total de iterações da execução, usado no modo profiled
+    int total_iterations{0};
+
+    // arquivo com os segmentos lineares do profiling de migração
+    std::string profiling_file;
+};
+
+
+enum class StepFieldRole {
+    none,
+    read_source,
+    write_target,
+    halo_source,
+    rebalance_source
+};
+
+struct StepFieldTag {
+    FieldHandle field;
+    StepFieldRole role{StepFieldRole::none};
 };
 
 struct ExecutionStep {
@@ -147,6 +179,7 @@ struct ExecutionStep {
     HaloSpec halo{};
     AutoBalancePolicy balance{};
     bool synchronize_at_end{true};
+    std::vector<StepFieldTag> field_tags;
 };
 
 } // namespace dcl

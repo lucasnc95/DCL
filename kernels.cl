@@ -1,3 +1,18 @@
+//*****************
+//Orientacao Malha.
+//*****************
+//
+//	 (Z)
+//    |  
+//	  | 
+//	  |____(X)
+//    /
+//   /
+//  /
+//(Y)
+//
+//*****************
+
 //Tipos de celulas.
 #define MALHA_TOTAL_CELULAS	8
 #define CELULA_A		0

@@ -1,4 +1,6 @@
-#include "include/dcl/runtime_impl.hpp"
+
+#include "runtime_impl.hpp"
+#include <iostream>
 
 namespace dcl {
 
@@ -21,21 +23,17 @@ const std::vector<DeviceInfo>& Runtime::devices() const noexcept {
     return impl_->devices();
 }
 
-int Runtime::rank() const noexcept {
-    return impl_->rank();
+const std::vector<DevicePartition>& Runtime::partitions() const noexcept {
+    return impl_->partitions();
 }
 
-int Runtime::size() const noexcept {
-    return impl_->size();
+const std::vector<DeviceTiming>& Runtime::device_timings() const noexcept {
+    return impl_->device_timings();
 }
 
-MPI_Comm Runtime::communicator() const noexcept {
-    return impl_->communicator();
-}
-
-BufferHandle Runtime::create_buffer(const BufferSpec& spec) {
-    return impl_->create_buffer(spec);
-}
+int Runtime::rank() const noexcept { return impl_->rank(); }
+int Runtime::size() const noexcept { return impl_->size(); }
+MPI_Comm Runtime::communicator() const noexcept { return impl_->communicator(); }
 
 FieldHandle Runtime::create_field(const FieldSpec& spec) {
     return impl_->create_field(spec);
@@ -57,30 +55,25 @@ void Runtime::set_partition(const PartitionSpec& spec) {
     impl_->set_partition(spec);
 }
 
-const std::vector<DevicePartition>& Runtime::partitions() const noexcept {
-    return impl_->partitions();
-}
-
 void Runtime::execute(const ExecutionStep& step) {
     impl_->execute(step);
 }
 
-void Runtime::rebalance(FieldHandle target_field) {
-    impl_->rebalance(target_field);
+void Runtime::rebalance_to(const std::vector<float>& loads) {
+    impl_->rebalance_to(loads);
 }
 
 void Runtime::gather(FieldHandle field, void* host_dst, std::size_t bytes) {
     impl_->gather(field, host_dst, bytes);
 }
 
+void Runtime::synchronize(bool force_finish) {
+    impl_->synchronize(force_finish);
+}
+
 KernelBindingBuilder::KernelBindingBuilder(Runtime& runtime, KernelHandle kernel)
     : runtime_(&runtime) {
     binding_.kernel = kernel;
-}
-
-KernelBindingBuilder& KernelBindingBuilder::arg(unsigned index, BufferHandle handle) {
-    binding_.args.push_back(std::make_pair(index, KernelArg(handle)));
-    return *this;
 }
 
 KernelBindingBuilder& KernelBindingBuilder::arg(unsigned index, FieldHandle handle) {
@@ -117,6 +110,11 @@ StepBuilder& StepBuilder::with_halo_exchange(const HaloSpec& halo) {
 
 StepBuilder& StepBuilder::with_balance(const AutoBalancePolicy& policy) {
     step_.balance = policy;
+    return *this;
+}
+
+StepBuilder& StepBuilder::tag_field(FieldHandle field, StepFieldRole role) {
+    step_.field_tags.push_back(dcl::StepFieldTag{field, role});
     return *this;
 }
 

@@ -1,0 +1,61 @@
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-7.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-4.localdomain
+compute-3-7.localdomain
+=== rank 1 local devices ===
+global=2 local=0 name="NVIDIA RTX 2000 Ada Generation" compute_units=22
+global=3 local=1 name="Intel(R) Xeon(R) CPU           E5620  @ 2.40GHz" compute_units=16
+=== rank 0 local devices ===
+global=0 local=0 name="NVIDIA RTX 2000 Ada Generation" compute_units=22
+global=1 local=1 name="Intel(R) Xeon(R) CPU           E5620  @ 2.40GHz" compute_units=16
+=== execution ===
+impl=dcl
+kernel=ocean_jacobi_2d_flat
+device=all
+iterations=200
+OpenCL local work-group = auto (nullptr / nullopt)
+nx=2048 ny=2048
+OCEAN DCL
+tempo_total_s=0.404189
+tempo_medio_iter_s=0.00202095
+samples
+  [0] = 0.000000
+  [1] = 0.001000
+  [2] = 0.002000
+  [599186] = 0.096087
+  [838860] = 0.455000
+  [1398101] = 0.411000
+  [2097152] = 0.072000
+  [2796202] = 0.777001
+  [3355443] = 0.733001
+  [4194303] = 0.188000

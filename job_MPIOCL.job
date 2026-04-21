@@ -1,13 +1,13 @@
 #!/bin/bash
 #----------------------------------------------------------
 # Job name
-#PBS -N DCL
+#PBS -N MPI+OCL
 
 # Name of stdout output file
-#PBS -o job_1.out
+#PBS -o job_mpiocl.out
 
 # Total number of nodes and MPI tasks/node requested
-#PBS -l nodes=compute-0-2:ppn=32+compute-3-0:ppn=16+compute-3-2:ppn=16
+#PBS -l nodes=compute-3-7:ppn=16+compute-3-4:ppn=16
 
 # Run time (hh:mm:ss) - 1.5 hours
 #PBS -l walltime=01:30:00
@@ -22,4 +22,4 @@ cat machines2
 
 export LD_LIBRARY_PATH=/share/apps/AMDAPPSDK-3.0/lib/x86_64/:$LD_LIBRARY_PATH
 # Launch MPI-based executable
-/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 3 -machinefile machines2 ./b.out
+/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 2 -machinefile machines2 ./a.out --impl mpiocl --kernel ocean --device all --iters 200 --nx 2048 --ny 2048

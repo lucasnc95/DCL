@@ -1,10 +1,11 @@
+
 #ifndef DCL_RUNTIME_HPP
 #define DCL_RUNTIME_HPP
 
 #include "types.hpp"
-
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace dcl {
 
@@ -14,7 +15,6 @@ class KernelBindingBuilder {
 public:
     KernelBindingBuilder(Runtime& runtime, KernelHandle kernel);
 
-    KernelBindingBuilder& arg(unsigned index, BufferHandle handle);
     KernelBindingBuilder& arg(unsigned index, FieldHandle handle);
     KernelBindingBuilder& arg(unsigned index, ScalarArg scalar);
 
@@ -32,6 +32,7 @@ public:
     StepBuilder& invoke(const KernelBinding& binding, const LaunchGeometry& geometry);
     StepBuilder& with_halo_exchange(const HaloSpec& halo);
     StepBuilder& with_balance(const AutoBalancePolicy& policy);
+    StepBuilder& tag_field(FieldHandle field, StepFieldRole role);
     StepBuilder& synchronize_at_end(bool value);
 
     ExecutionStep build() const;
@@ -56,12 +57,12 @@ public:
 
     const std::vector<DeviceInfo>& devices() const noexcept;
     const std::vector<DevicePartition>& partitions() const noexcept;
+    const std::vector<DeviceTiming>& device_timings() const noexcept;
 
     int rank() const noexcept;
     int size() const noexcept;
     MPI_Comm communicator() const noexcept;
 
-    BufferHandle create_buffer(const BufferSpec& spec);
     FieldHandle create_field(const FieldSpec& spec);
     KernelHandle create_kernel(const KernelSpec& spec);
 
@@ -70,8 +71,9 @@ public:
 
     void set_partition(const PartitionSpec& spec);
     void execute(const ExecutionStep& step);
-    void rebalance(FieldHandle target_field);
+    void rebalance_to(const std::vector<float>& loads);
     void gather(FieldHandle field, void* host_dst, std::size_t bytes);
+    void synchronize(bool force_finish = false);
 
 private:
     class Impl;
