@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
         const int y = parse_int_arg(argv + 1, argv + argc, "--y", 50);
         const int z = parse_int_arg(argv + 1, argv + argc, "--z", 320);
 
-        const int iterations = parse_int_arg(argv + 1, argv + argc, "--iterations", 100000);
+        const int iterations = parse_int_arg(argv + 1, argv + argc, "--iterations", 10000);
 
         const int rebalance_interval = parse_int_arg(argv + 1, argv + argc, "--rebalance-interval", 1000);
         const float rebalance_threshold = parse_float_arg(argv + 1, argv + argc, "--rebalance-threshold", 0.05f);

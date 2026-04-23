@@ -462,6 +462,10 @@ public:
 
         device_timings_.assign(local_devices_.size(), DeviceTiming{});
         last_elapsed_local_.assign(local_devices_.size(), 0.0);
+        balance_window_start_events_.assign(local_devices_.size(), nullptr);
+        balance_window_end_events_.assign(local_devices_.size(), nullptr);
+        balance_window_valid_.assign(local_devices_.size(), false);
+        balance_window_begin_iteration_ = 0;
     }
 
     const std::vector<DeviceInfo>& devices() const noexcept { return devices_; }
@@ -572,7 +576,8 @@ public:
 
     void execute(const ExecutionStep& step) {
         if (step.invocations.empty()) return;
-        //std::cout<<"Iteration "<<iteration_counter_<<" executing step \""<<step.name<<"\"\n";
+        // execute step profiling window update
+
         std::vector<double> step_elapsed_local(local_devices_.size(), 0.0);
 
         for (std::size_t inv = 0; inv < step.invocations.size(); ++inv) {
@@ -583,21 +588,26 @@ public:
 
             detail::RegisteredKernel& rk = kit->second;
             std::vector<double> elapsed_local(local_devices_.size(), 0.0);
-            std::vector<std::pair<std::size_t, cl_event>> kernel_events;
 
             if (step.halo.width_elements > 0 && !step.halo.fields.empty()) {
-                run_interior_phase(rk, ki, kernel_events, step.halo.width_elements);
+                std::vector<std::pair<std::size_t, cl_event>> interior_events;
+                run_interior_phase(rk, ki, interior_events, step.halo.width_elements);
                 exchange_halo_set(step.halo);
                 synchronize_all_local_devices(false);
-                finalize_kernel_events(kernel_events, elapsed_local);
+                update_balance_window_events(interior_events, {});
+                finalize_kernel_events(interior_events, elapsed_local);
 
-                run_border_phase(rk, ki, kernel_events, step.halo.width_elements);
+                std::vector<std::pair<std::size_t, cl_event>> border_events;
+                run_border_phase(rk, ki, border_events, step.halo.width_elements);
                 synchronize_all_local_devices(false);
-                finalize_kernel_events(kernel_events, elapsed_local);
+                update_balance_window_events({}, border_events);
+                finalize_kernel_events(border_events, elapsed_local);
             } else {
-                run_full_phase(rk, ki, kernel_events);
+                std::vector<std::pair<std::size_t, cl_event>> full_events;
+                run_full_phase(rk, ki, full_events);
                 synchronize_all_local_devices(false);
-                finalize_kernel_events(kernel_events, elapsed_local);
+                update_balance_window_events(full_events, full_events);
+                finalize_kernel_events(full_events, elapsed_local);
             }
 
             for (std::size_t d = 0; d < step_elapsed_local.size(); ++d) {
@@ -609,7 +619,6 @@ public:
             extract_rw_fields(ki.binding);
         }
 
-        last_elapsed_local_ = step_elapsed_local;
         update_device_timings(step_elapsed_local);
         ++iteration_counter_;
         if (step.balance.mode != BalanceMode::off) {
@@ -650,7 +659,7 @@ public:
                     this->maybe_rebalance_from_timings(target, step.balance.threshold);
                 } else if (step.balance.mode == BalanceMode::dynamic_profiled ||
                            step.balance.mode == BalanceMode::static_profiled) {
-                    this->maybe_rebalance_profiled(target, step.balance);
+                    this->maybe_rebalance_profiled(target, step.balance, step.balance.interval);
                 }
             }
         }
@@ -705,6 +714,7 @@ public:
         partitions_ = new_parts;
         current_loads_ = normalized;
         this->synchronize(true);
+        reset_balance_window_events();
         print_partition_loads(current_loads_);
     }
 
@@ -1018,6 +1028,7 @@ private:
 
 
     void clear_runtime_state() {
+        reset_balance_window_events();
         platforms_.clear();
         local_devices_.clear();
         devices_.clear();
@@ -1028,6 +1039,9 @@ private:
         current_loads_.clear();
         device_timings_.clear();
         last_elapsed_local_.clear();
+        balance_window_start_events_.clear();
+        balance_window_end_events_.clear();
+        balance_window_valid_.clear();
         last_input_fields_.clear();
         last_output_fields_.clear();
 
@@ -1276,6 +1290,93 @@ std::vector<DevicePartition> partitions_from_loads(const std::vector<float>& loa
             clReleaseEvent(ev);
         }
         kernel_events.clear();
+    }
+
+    void release_event_if_needed(cl_event& ev) {
+        if (ev != nullptr) {
+            clReleaseEvent(ev);
+            ev = nullptr;
+        }
+    }
+
+    void reset_balance_window_events() {
+        for (std::size_t d = 0; d < balance_window_start_events_.size(); ++d) {
+            release_event_if_needed(balance_window_start_events_[d]);
+            release_event_if_needed(balance_window_end_events_[d]);
+            balance_window_valid_[d] = false;
+        }
+        balance_window_begin_iteration_ = iteration_counter_;
+    }
+
+    void update_balance_window_events(
+        const std::vector<std::pair<std::size_t, cl_event>>& start_events,
+        const std::vector<std::pair<std::size_t, cl_event>>& end_events) {
+        for (const auto& item : start_events) {
+            const std::size_t d = item.first;
+            cl_event ev = item.second;
+            if (ev == nullptr || d >= balance_window_start_events_.size()) continue;
+
+            if (balance_window_start_events_[d] == nullptr) {
+                detail::check_cl(clRetainEvent(ev), "clRetainEvent(balance window start)");
+                balance_window_start_events_[d] = ev;
+                balance_window_valid_[d] = true;
+            }
+        }
+
+        for (const auto& item : end_events) {
+            const std::size_t d = item.first;
+            cl_event ev = item.second;
+            if (ev == nullptr || d >= balance_window_end_events_.size()) continue;
+
+            if (balance_window_start_events_[d] == nullptr) {
+                detail::check_cl(clRetainEvent(ev), "clRetainEvent(balance window fallback start)");
+                balance_window_start_events_[d] = ev;
+            }
+
+            release_event_if_needed(balance_window_end_events_[d]);
+            detail::check_cl(clRetainEvent(ev), "clRetainEvent(balance window end)");
+            balance_window_end_events_[d] = ev;
+            balance_window_valid_[d] = true;
+        }
+    }
+
+    std::vector<double> compute_balance_window_elapsed_local() {
+        std::vector<double> elapsed(local_devices_.size(), 0.0);
+
+        for (std::size_t d = 0; d < local_devices_.size(); ++d) {
+            if (!balance_window_valid_[d]) continue;
+            if (balance_window_start_events_[d] == nullptr) continue;
+            if (balance_window_end_events_[d] == nullptr) continue;
+
+            detail::check_cl(
+                clWaitForEvents(1, &balance_window_end_events_[d]),
+                "clWaitForEvents(balance window end)"
+            );
+
+            cl_ulong t0 = 0;
+            cl_ulong t1 = 0;
+            const cl_int e0 = clGetEventProfilingInfo(
+                balance_window_start_events_[d],
+                CL_PROFILING_COMMAND_START,
+                sizeof(cl_ulong),
+                &t0,
+                nullptr
+            );
+            const cl_int e1 = clGetEventProfilingInfo(
+                balance_window_end_events_[d],
+                CL_PROFILING_COMMAND_END,
+                sizeof(cl_ulong),
+                &t1,
+                nullptr
+            );
+
+            if (e0 == CL_SUCCESS && e1 == CL_SUCCESS && t1 >= t0) {
+                elapsed[d] = static_cast<double>(t1 - t0) * 1.0e-9;
+            }
+        }
+
+        last_elapsed_local_ = elapsed;
+        return elapsed;
     }
 
     void synchronize_all_local_devices(bool force_finish) {
@@ -2059,12 +2160,14 @@ inline bool maybe_rebalance_from_timings(FieldHandle target_field, float thresho
         throw Error("maybe_rebalance_from_timings(): unknown field");
     }
 
+    const std::vector<double> measured_elapsed = compute_balance_window_elapsed_local();
+
     std::vector<double> local_times(partitions_.size(), 0.0);
     for (std::size_t i = 0; i < partitions_.size(); ++i) {
         if (partitions_[i].owning_rank == rank_ && partitions_[i].local_index >= 0) {
             const int li = partitions_[i].local_index;
-            if (li >= 0 && static_cast<std::size_t>(li) < last_elapsed_local_.size()) {
-                local_times[i] = last_elapsed_local_[static_cast<std::size_t>(li)];
+            if (li >= 0 && static_cast<std::size_t>(li) < measured_elapsed.size()) {
+                local_times[i] = measured_elapsed[static_cast<std::size_t>(li)];
             }
         }
     }
@@ -2401,7 +2504,7 @@ double get_migration_overhead(std::size_t volume) const {
 
 
 
-inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalancePolicy& policy) {
+inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalancePolicy& policy, int interval) {
     if (!partition_.has_value()) return false;
     if (partitions_.empty()) return false;
     if (policy.total_iterations <= 0) return false;
@@ -2413,12 +2516,14 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     // ---------------------------------------------------------------------
     // 1. Coleta tempos locais
     // ---------------------------------------------------------------------
+    const std::vector<double> measured_elapsed = compute_balance_window_elapsed_local();
+
     std::vector<double> local_times(partitions_.size(), 0.0);
     for (std::size_t i = 0; i < partitions_.size(); ++i) {
         if (partitions_[i].owning_rank == rank_ && partitions_[i].local_index >= 0) {
             const int li = partitions_[i].local_index;
-            if (li >= 0 && static_cast<std::size_t>(li) < last_elapsed_local_.size()) {
-                local_times[i] = last_elapsed_local_[static_cast<std::size_t>(li)];
+            if (li >= 0 && static_cast<std::size_t>(li) < measured_elapsed.size()) {
+                local_times[i] = measured_elapsed[static_cast<std::size_t>(li)];
             }
         }
     }
@@ -2488,10 +2593,13 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
         }
     }
 
-    const double T_comp_bal =
+    double T_comp_bal =
         (C_total > 0.0)
             ? (static_cast<double>(partition_->global_elements) / C_total)
             : T_comp_int;
+
+    T_comp_int /= interval;
+    T_comp_bal /= interval;
 
     // ---------------------------------------------------------------------
     // 5. Estima bytes migrados
@@ -2587,6 +2695,7 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     partitions_ = new_parts;
     current_loads_ = new_loads;
     this->synchronize(true);
+    reset_balance_window_events();
 
     print_partition_loads(current_loads_);
     return true;
@@ -2881,6 +2990,10 @@ private:
     std::vector<float> current_loads_;
     std::vector<DeviceTiming> device_timings_;
     std::vector<double> last_elapsed_local_;
+    std::vector<cl_event> balance_window_start_events_;
+    std::vector<cl_event> balance_window_end_events_;
+    std::vector<bool> balance_window_valid_;
+    std::size_t balance_window_begin_iteration_{0};
     std::vector<FieldHandle> last_input_fields_;
     std::vector<FieldHandle> last_output_fields_;
     std::size_t iteration_counter_{0};
