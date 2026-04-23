@@ -56,6 +56,45 @@ static inline std::string slurp_file(const std::string& path) {
     return ss.str();
 }
 
+
+inline std::vector<float> cumulative_to_individual(
+    const std::vector<float>& cumulative
+) {
+    std::vector<float> individual(cumulative.size(), 0.0f);
+
+    if (cumulative.empty()) return individual;
+
+    float prev = 0.0f;
+    for (std::size_t i = 0; i < cumulative.size(); ++i) {
+        individual[i] = cumulative[i] - prev;
+        prev = cumulative[i];
+    }
+
+    return individual;
+}
+
+inline void print_loads_debug(const std::vector<float>& cumulative) {
+    if (cumulative.empty()) return;
+
+    const std::vector<float> individual =
+        detail::cumulative_to_individual(cumulative);
+
+    float sum = 0.0f;
+
+    std::cout << "  ---- Loads ----\n";
+    for (std::size_t i = 0; i < cumulative.size(); ++i) {
+        sum += individual[i];
+
+        std::cout
+            << "  part[" << i << "] "
+            << "cum=" << (100.0f * cumulative[i]) << "% "
+            << "share=" << (100.0f * individual[i]) << "%\n";
+    }
+
+    std::cout << "  total=" << (100.0f * sum) << "%\n";
+}
+
+
 static inline DeviceKind classify_device_kind(cl_device_type type) {
     if (type & CL_DEVICE_TYPE_GPU) return DeviceKind::gpu;
     if (type & CL_DEVICE_TYPE_CPU) return DeviceKind::cpu;
@@ -108,6 +147,55 @@ static inline float max_abs_diff(const std::vector<float>& a,
         m = std::max(m, std::fabs(a[i] - b[i]));
     }
     return m;
+}
+
+
+inline std::vector<float> compute_loads_from_times_prefix_inverse(
+    const std::vector<double>& tempos_medidos
+) {
+    const int participantes = static_cast<int>(tempos_medidos.size());
+    std::vector<float> cargas_novas(static_cast<std::size_t>(participantes), 1.0f);
+
+    if (participantes <= 0) {
+        return {};
+    }
+
+    if (participantes == 1) {
+        cargas_novas[0] = 1.0f;
+        return cargas_novas;
+    }
+
+    std::vector<double> capacidade(static_cast<std::size_t>(participantes), 0.0);
+    double capacidade_total = 0.0;
+
+    for (int i = 0; i < participantes; ++i) {
+        const double t = std::max(tempos_medidos[static_cast<std::size_t>(i)], 1.0e-9);
+        capacidade[static_cast<std::size_t>(i)] = 1.0 / t;
+        capacidade_total += capacidade[static_cast<std::size_t>(i)];
+    }
+
+    if (capacidade_total <= 0.0) {
+        const float passo = 1.0f / static_cast<float>(participantes);
+        float acumulada = 0.0f;
+        for (int i = 0; i < participantes; ++i) {
+            acumulada += passo;
+            cargas_novas[static_cast<std::size_t>(i)] = acumulada;
+        }
+        cargas_novas.back() = 1.0f;
+        return cargas_novas;
+    }
+
+    double carga_acumulada = 0.0;
+    for (int i = 0; i < participantes; ++i) {
+        const double fatia =
+            capacidade[static_cast<std::size_t>(i)] / capacidade_total;
+        carga_acumulada += fatia;
+        cargas_novas[static_cast<std::size_t>(i)] =
+            static_cast<float>(carga_acumulada);
+    }
+
+    cargas_novas.back() = 1.0f;
+    return cargas_novas;
 }
 
 static inline std::vector<float> compute_loads_from_times(const std::vector<double>& times) {
@@ -1879,7 +1967,7 @@ inline void rebalance(FieldHandle target_field) {
     }
 
     // Igual ao rebalance_to(): sincroniza antes de redistribuir
-    this->synchronize(true);
+    this->synchronize(false);
 
     this->redistribute_field_intersection(target_field, old_parts, new_parts);
 
@@ -1887,12 +1975,81 @@ inline void rebalance(FieldHandle target_field) {
     current_loads_ = new_loads;
 
     // Igual ao rebalance_to(): sincroniza depois
-    this->synchronize(true);
+    this->synchronize(false);
 }
 
 
-inline bool maybe_rebalance_from_timings(FieldHandle target_field,
-                                                        float threshold) {
+// inline bool maybe_rebalance_from_timings(FieldHandle target_field,
+//                                                         float threshold) {
+//     if (!partition_.has_value()) return false;
+//     if (partitions_.empty()) return false;
+
+//     std::unordered_map<int, detail::RegisteredField>::iterator fit =
+//         fields_.find(target_field.value);
+//     if (fit == fields_.end()) {
+//         throw Error("maybe_rebalance_from_timings(): unknown field");
+//     }
+
+//     std::vector<double> local_times(partitions_.size(), 0.0);
+//     for (std::size_t i = 0; i < partitions_.size(); ++i) {
+//         if (partitions_[i].owning_rank == rank_ && partitions_[i].local_index >= 0) {
+//             const int li = partitions_[i].local_index;
+//             if (li >= 0 && static_cast<std::size_t>(li) < last_elapsed_local_.size()) {
+//                 local_times[i] = last_elapsed_local_[li];
+//             }
+//         }
+//     }
+
+//     std::vector<double> global_times(partitions_.size(), 0.0);
+//     detail::check_mpi(
+//         MPI_Allreduce(
+//             local_times.data(),
+//             global_times.data(),
+//             static_cast<int>(global_times.size()),
+//             MPI_DOUBLE,
+//             MPI_SUM,
+//             comm_
+//         ),
+//         "MPI_Allreduce(balance times)"
+//     );
+
+//     const std::vector<float> new_loads =
+//         detail::compute_loads_from_times(global_times);
+
+//     if (new_loads.empty()) return false;
+
+//     float diff = std::numeric_limits<float>::infinity();
+//     if (!current_loads_.empty() && current_loads_.size() == new_loads.size()) {
+//         diff = 0.0f;
+//         for (std::size_t i = 0; i < new_loads.size(); ++i) {
+//             diff = std::max(diff, std::fabs(current_loads_[i] - new_loads[i]));
+//         }
+//     }
+
+//     if (rank_ == 0) {
+//         std::cout << "DCL balance attempt:\n";
+//         for (std::size_t i = 0; i < new_loads.size(); ++i) {
+//             std::cout << "  part[" << i << "] load=" << (100.0f * new_loads[i]) << "%\n";
+//         }
+//         std::cout << "  max_diff=" << diff * 100.0f << "% threshold=" << threshold * 100.0f << "%\n";
+//     }
+
+//     if (diff < threshold) {
+//         if (rank_ == 0) {
+//             std::cout << "  action=skip\n";
+//         }
+//         return false;
+//     }
+
+//     if (rank_ == 0) {
+//         std::cout << "  action=rebalance\n";
+//     }
+//     this->rebalance_to(new_loads);
+//     return true;
+// }
+
+
+inline bool maybe_rebalance_from_timings(FieldHandle target_field, float threshold) {
     if (!partition_.has_value()) return false;
     if (partitions_.empty()) return false;
 
@@ -1907,7 +2064,7 @@ inline bool maybe_rebalance_from_timings(FieldHandle target_field,
         if (partitions_[i].owning_rank == rank_ && partitions_[i].local_index >= 0) {
             const int li = partitions_[i].local_index;
             if (li >= 0 && static_cast<std::size_t>(li) < last_elapsed_local_.size()) {
-                local_times[i] = last_elapsed_local_[li];
+                local_times[i] = last_elapsed_local_[static_cast<std::size_t>(li)];
             }
         }
     }
@@ -1926,27 +2083,35 @@ inline bool maybe_rebalance_from_timings(FieldHandle target_field,
     );
 
     const std::vector<float> new_loads =
-        detail::compute_loads_from_times(global_times);
+        detail::compute_loads_from_times_prefix_inverse(global_times);
 
     if (new_loads.empty()) return false;
 
-    float diff = std::numeric_limits<float>::infinity();
+    double diff_l2 = std::numeric_limits<double>::infinity();
     if (!current_loads_.empty() && current_loads_.size() == new_loads.size()) {
-        diff = 0.0f;
+        diff_l2 = 0.0;
         for (std::size_t i = 0; i < new_loads.size(); ++i) {
-            diff = std::max(diff, std::fabs(current_loads_[i] - new_loads[i]));
+            const double d =
+                static_cast<double>(current_loads_[i]) -
+                static_cast<double>(new_loads[i]);
+            diff_l2 += d * d;
         }
+        diff_l2 = std::sqrt(diff_l2);
     }
 
     if (rank_ == 0) {
-        std::cout << "DCL balance attempt:\n";
-        for (std::size_t i = 0; i < new_loads.size(); ++i) {
-            std::cout << "  part[" << i << "] load=" << (100.0f * new_loads[i]) << "%\n";
-        }
-        std::cout << "  max_diff=" << diff * 100.0f << "% threshold=" << threshold * 100.0f << "%\n";
+        std::cout << "[DCL][threshold] balance attempt:\n";
+        std::cout << "  OLD loads:\n";
+        detail::print_loads_debug(current_loads_);
+
+        std::cout << "  NEW loads:\n";
+        detail::print_loads_debug(new_loads);
+        std::cout
+            << "  l2_diff=" << (100.0 * diff_l2) << "% "
+            << "threshold=" << (100.0f * threshold) << "%\n";
     }
 
-    if (diff < threshold) {
+    if (diff_l2 < static_cast<double>(threshold)) {
         if (rank_ == 0) {
             std::cout << "  action=skip\n";
         }
@@ -1956,9 +2121,11 @@ inline bool maybe_rebalance_from_timings(FieldHandle target_field,
     if (rank_ == 0) {
         std::cout << "  action=rebalance\n";
     }
+
     this->rebalance_to(new_loads);
     return true;
 }
+
 
 inline void load_profiling_data(const std::string& profiling_file) {
     int n_points = 0;
@@ -2052,6 +2219,188 @@ double get_migration_overhead(std::size_t volume) const {
     return (overhead > 0.0) ? overhead : 0.0;
 }
 
+// inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalancePolicy& policy) {
+//     if (!partition_.has_value()) return false;
+//     if (partitions_.empty()) return false;
+//     if (policy.total_iterations <= 0) return false;
+
+//     if (!profiling_loaded_ || profiling_file_loaded_ != policy.profiling_file) {
+//         load_profiling_data(policy.profiling_file);
+//     }
+
+//     // ---------------------------------------------------------------------
+//     // 1. Coleta tempos locais
+//     // ---------------------------------------------------------------------
+//     std::vector<double> local_times(partitions_.size(), 0.0);
+//     for (std::size_t i = 0; i < partitions_.size(); ++i) {
+//         if (partitions_[i].owning_rank == rank_ && partitions_[i].local_index >= 0) {
+//             const int li = partitions_[i].local_index;
+//             if (li >= 0 && static_cast<std::size_t>(li) < last_elapsed_local_.size()) {
+//                 local_times[i] = last_elapsed_local_[static_cast<std::size_t>(li)];
+//             }
+//         }
+//     }
+
+//     // ---------------------------------------------------------------------
+//     // 2. Redução global
+//     // ---------------------------------------------------------------------
+//     std::vector<double> global_times(partitions_.size(), 0.0);
+//     detail::check_mpi(
+//         MPI_Allreduce(local_times.data(), global_times.data(),
+//                       static_cast<int>(global_times.size()),
+//                       MPI_DOUBLE, MPI_SUM, comm_),
+//         "MPI_Allreduce(profiled balance times)"
+//     );
+
+//     const std::vector<float> new_loads = detail::compute_loads_from_times(global_times);
+//     if (new_loads.empty()) return false;
+
+//     const std::vector<DevicePartition> old_parts = partitions_;
+//     const std::vector<DevicePartition> new_parts = partitions_from_loads(new_loads);
+
+//     // ---------------------------------------------------------------------
+//     // 3. Verifica se mudou algo
+//     // ---------------------------------------------------------------------
+//     bool same = (old_parts.size() == new_parts.size());
+//     if (same) {
+//         for (std::size_t i = 0; i < old_parts.size(); ++i) {
+//             if (old_parts[i].global_offset != new_parts[i].global_offset ||
+//                 old_parts[i].element_count != new_parts[i].element_count ||
+//                 old_parts[i].owning_rank   != new_parts[i].owning_rank ||
+//                 old_parts[i].local_index   != new_parts[i].local_index) {
+//                 same = false;
+//                 break;
+//             }
+//         }
+//     }
+
+//     if (same) {
+//         current_loads_ = new_loads;
+//         if (rank_ == 0) {
+//             std::cout << "[DCL][profiled] iteration " << iteration_counter_
+//                       << ": skip (new partition identical)\n";
+//         }
+//         return false;
+//     }
+
+//     // ---------------------------------------------------------------------
+//     // 4. Estima tempos
+//     // ---------------------------------------------------------------------
+//     double T_comp_int = 0.0;
+//     double C_total = 0.0;
+
+//     for (std::size_t i = 0; i < partitions_.size(); ++i) {
+//         if (global_times[i] > T_comp_int) {
+//             T_comp_int = global_times[i];
+//         }
+
+//         if (global_times[i] > 1.0e-12 && partitions_[i].element_count > 0) {
+//             C_total += static_cast<double>(partitions_[i].element_count) / global_times[i];
+//         }
+//     }
+
+//     const double T_comp_bal =
+//         (C_total > 0.0)
+//             ? (static_cast<double>(partition_->global_elements) / C_total)
+//             : T_comp_int;
+
+//     // ---------------------------------------------------------------------
+//     // 5. Estima bytes migrados
+//     // ---------------------------------------------------------------------
+//     std::vector<std::size_t> rank_recv_bytes(static_cast<std::size_t>(size_), 0ull);
+
+//     auto count_migration_bytes = [&](const detail::RegisteredField& field) {
+//         const std::size_t elem_bytes =
+//             field.spec.units_per_element * field.spec.bytes_per_unit;
+
+//         for (const auto& src : old_parts) {
+//             for (const auto& dst : new_parts) {
+//                 std::size_t off = 0;
+//                 std::size_t len = 0;
+
+//                 if (detail::intersect_1d(
+//                         src.global_offset, src.element_count,
+//                         dst.global_offset, dst.element_count,
+//                         off, len)) {
+
+//                     if (len > 0 && src.owning_rank != dst.owning_rank) {
+//                         rank_recv_bytes[static_cast<std::size_t>(dst.owning_rank)] += len * elem_bytes;
+//                     }
+//                 }
+//             }
+//         }
+//     };
+
+//     for (const auto& kv : fields_) {
+//         count_migration_bytes(kv.second);
+//     }
+
+//     std::size_t max_v_migrado = 0;
+//     for (std::size_t bytes : rank_recv_bytes) {
+//         if (bytes > max_v_migrado) {
+//             max_v_migrado = bytes;
+//         }
+//     }
+
+//     // ---------------------------------------------------------------------
+//     // 6. Modelo de custo
+//     // ---------------------------------------------------------------------
+//     const double custo_migracao = get_migration_overhead(max_v_migrado);
+
+//     const std::size_t remaining_iterations =
+//         (iteration_counter_ < static_cast<std::size_t>(policy.total_iterations))
+//             ? (static_cast<std::size_t>(policy.total_iterations) - iteration_counter_)
+//             : 0ull;
+
+//     const double ganho_por_iter = std::max(0.0, T_comp_int - T_comp_bal);
+//     const double ganho_total_estimado =
+//         ganho_por_iter * static_cast<double>(remaining_iterations);
+
+//     // ---------------------------------------------------------------------
+//     // 7. Logs
+//     // ---------------------------------------------------------------------
+//     if (rank_ == 0) {
+//         std::cout
+//             << "[DCL][profiled] iteration " << iteration_counter_ << ":\n"
+//             << "  remaining_iterations=" << remaining_iterations << "\n"
+//             << "  T_comp_int=" << T_comp_int << "\n"
+//             << "  T_comp_bal=" << T_comp_bal << "\n"
+//             << "  ganho_por_iter=" << ganho_por_iter << "\n"
+//             << "  ganho_total=" << ganho_total_estimado << "\n"
+//             << "  max_v_migrado=" << max_v_migrado << " bytes\n"
+//             << "  custo_migracao=" << custo_migracao << "\n";
+//     }
+
+//     // ---------------------------------------------------------------------
+//     // 8. Decisão
+//     // ---------------------------------------------------------------------
+//     if (remaining_iterations == 0 || custo_migracao >= ganho_total_estimado) {
+//         if (rank_ == 0) {
+//             std::cout << "  action=skip\n";
+//         }
+//         return false;
+//     }
+
+//     if (rank_ == 0) {
+//         std::cout << "  action=rebalance\n";
+//     }
+
+//     // ---------------------------------------------------------------------
+//     // 9. Aplica rebalanceamento
+//     // ---------------------------------------------------------------------
+//     this->synchronize(true);
+//     this->redistribute_all_registered_fields(old_parts, new_parts);
+//     partitions_ = new_parts;
+//     current_loads_ = new_loads;
+//     this->synchronize(true);
+
+//     print_partition_loads(current_loads_);
+
+//     return true;
+// }
+
+
+
 inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalancePolicy& policy) {
     if (!partition_.has_value()) return false;
     if (partitions_.empty()) return false;
@@ -2079,13 +2428,20 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     // ---------------------------------------------------------------------
     std::vector<double> global_times(partitions_.size(), 0.0);
     detail::check_mpi(
-        MPI_Allreduce(local_times.data(), global_times.data(),
-                      static_cast<int>(global_times.size()),
-                      MPI_DOUBLE, MPI_SUM, comm_),
+        MPI_Allreduce(
+            local_times.data(),
+            global_times.data(),
+            static_cast<int>(global_times.size()),
+            MPI_DOUBLE,
+            MPI_SUM,
+            comm_
+        ),
         "MPI_Allreduce(profiled balance times)"
     );
 
-    const std::vector<float> new_loads = detail::compute_loads_from_times(global_times);
+    const std::vector<float> new_loads =
+        detail::compute_loads_from_times_prefix_inverse(global_times);
+
     if (new_loads.empty()) return false;
 
     const std::vector<DevicePartition> old_parts = partitions_;
@@ -2202,6 +2558,11 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
             << "  ganho_total=" << ganho_total_estimado << "\n"
             << "  max_v_migrado=" << max_v_migrado << " bytes\n"
             << "  custo_migracao=" << custo_migracao << "\n";
+            std::cout << "  OLD loads:\n";
+            detail::print_loads_debug(current_loads_);
+
+            std::cout << "  NEW loads:\n";
+            detail::print_loads_debug(new_loads);
     }
 
     // ---------------------------------------------------------------------
@@ -2228,9 +2589,10 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     this->synchronize(true);
 
     print_partition_loads(current_loads_);
-
     return true;
 }
+
+
 
 inline void transfer_field_range(
     FieldHandle fh,
