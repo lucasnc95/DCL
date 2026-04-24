@@ -569,9 +569,15 @@ public:
 
         current_loads_.assign(partitions_.size(), 0.0f);
         if (!partitions_.empty()) {
-            const float eq = 1.0f / static_cast<float>(partitions_.size());
-            std::fill(current_loads_.begin(), current_loads_.end(), eq);
+            const float step = 1.0f / static_cast<float>(partitions_.size());
+            float acc = 0.0f;
+            for (std::size_t i = 0; i < current_loads_.size(); ++i) {
+                acc += step;
+                current_loads_[i] = acc;
+            }
+            current_loads_.back() = 1.0f;
         }
+        reset_balance_window_events();
     }
 
     void execute(const ExecutionStep& step) {
@@ -676,20 +682,24 @@ public:
             throw Error("rebalance_to(): loads size must match number of partitions");
         }
 
-        std::vector<float> normalized = loads;
-        double sum = 0.0;
-        for (float v : normalized) {
-            if (v < 0.0f) throw Error("rebalance_to(): negative load not allowed");
-            sum += static_cast<double>(v);
+        // From now on, loads is cumulative: [0.10, 0.20, ..., 1.00].
+        std::vector<float> cumulative = loads;
+        float prev = 0.0f;
+        for (std::size_t i = 0; i < cumulative.size(); ++i) {
+            if (!std::isfinite(cumulative[i])) {
+                throw Error("rebalance_to(): non-finite cumulative load");
+            }
+            if (cumulative[i] < 0.0f) {
+                throw Error("rebalance_to(): negative cumulative load not allowed");
+            }
+            if (cumulative[i] < prev) cumulative[i] = prev;
+            if (cumulative[i] > 1.0f) cumulative[i] = 1.0f;
+            prev = cumulative[i];
         }
-        if (sum <= 0.0) throw Error("rebalance_to(): sum of loads must be > 0");
-
-        for (float& v : normalized) {
-            v = static_cast<float>(static_cast<double>(v) / sum);
-        }
+        cumulative.back() = 1.0f;
 
         const std::vector<DevicePartition> old_parts = partitions_;
-        const std::vector<DevicePartition> new_parts = partitions_from_loads(normalized);
+        const std::vector<DevicePartition> new_parts = partitions_from_loads(cumulative);
 
         bool same = (old_parts.size() == new_parts.size());
         if (same) {
@@ -704,7 +714,8 @@ public:
             }
         }
         if (same) {
-            current_loads_ = normalized;
+            current_loads_ = cumulative;
+            reset_balance_window_events();
             print_partition_loads(current_loads_);
             return;
         }
@@ -712,7 +723,7 @@ public:
         this->synchronize(true);
         redistribute_all_registered_fields(old_parts, new_parts);
         partitions_ = new_parts;
-        current_loads_ = normalized;
+        current_loads_ = cumulative;
         this->synchronize(true);
         reset_balance_window_events();
         print_partition_loads(current_loads_);
@@ -1012,17 +1023,25 @@ private:
 
     void print_partition_loads(const std::vector<float>& loads) const {
         if (rank_ != 0) return;
+
+        const std::vector<float> individual = detail::cumulative_to_individual(loads);
+
         std::cout << "DCL loads by partition:\n";
+        float total = 0.0f;
         for (std::size_t i = 0; i < loads.size(); ++i) {
             const DevicePartition& dp = partitions_[i];
+            const float share = (i < individual.size()) ? individual[i] : 0.0f;
+            total += share;
             std::cout << "  part[" << i << "]"
                       << " device_global=" << dp.device_global_index
                       << " rank=" << dp.owning_rank
                       << " local_index=" << dp.local_index
                       << " offset=" << dp.global_offset
                       << " count=" << dp.element_count
-                      << " load=" << (100.0f * loads[i]) << "%\n";
+                      << " cum=" << (100.0f * loads[i]) << "%"
+                      << " share=" << (100.0f * share) << "%\n";
         }
+        std::cout << "  total_share=" << (100.0f * total) << "%\n";
         std::cout << std::flush;
     }
 
@@ -1118,57 +1137,42 @@ std::vector<DevicePartition> partitions_from_loads(const std::vector<float>& loa
     const std::size_t gran =
         std::max<std::size_t>(static_cast<std::size_t>(1), partition_->granularity);
 
-    // normaliza por segurança
-    double sum = 0.0;
-    for (std::size_t i = 0; i < loads.size(); ++i) {
-        sum += static_cast<double>(loads[i]);
+    // loads is cumulative: [0.10, 0.20, ..., 1.00].
+    std::vector<float> cumulative = loads;
+    float prev = 0.0f;
+    for (std::size_t i = 0; i < cumulative.size(); ++i) {
+        if (!std::isfinite(cumulative[i])) return out;
+        if (cumulative[i] < 0.0f) cumulative[i] = 0.0f;
+        if (cumulative[i] < prev) cumulative[i] = prev;
+        if (cumulative[i] > 1.0f) cumulative[i] = 1.0f;
+        prev = cumulative[i];
     }
-    if (sum <= 0.0) {
-        return out;
-    }
+    cumulative.back() = 1.0f;
 
-    std::vector<double> norm(loads.size(), 0.0);
-    for (std::size_t i = 0; i < loads.size(); ++i) {
-        norm[i] = static_cast<double>(loads[i]) / sum;
-    }
-
-    std::vector<std::size_t> cuts(loads.size() + 1, 0);
+    std::vector<std::size_t> cuts(cumulative.size() + 1, 0);
     cuts[0] = 0;
 
-    // cortes acumulados
-    double acc = 0.0;
-    for (std::size_t i = 0; i < loads.size(); ++i) {
-        if (i + 1 == loads.size()) {
+    for (std::size_t i = 0; i < cumulative.size(); ++i) {
+        if (i + 1 == cumulative.size()) {
             cuts[i + 1] = n;
         } else {
-            acc += norm[i] * static_cast<double>(n);
-
-            std::size_t cut = static_cast<std::size_t>(std::llround(acc));
-
-            // respeita granularidade
+            const double raw = static_cast<double>(cumulative[i]) * static_cast<double>(n);
+            std::size_t cut = static_cast<std::size_t>(std::llround(raw));
             cut = (cut / gran) * gran;
-
             if (cut > n) cut = n;
             if (cut < cuts[i]) cut = cuts[i];
-
             cuts[i + 1] = cut;
         }
     }
 
     cuts.back() = n;
-
-    // monotonicidade final
     for (std::size_t i = 1; i < cuts.size(); ++i) {
-        if (cuts[i] < cuts[i - 1]) {
-            cuts[i] = cuts[i - 1];
-        }
-        if (cuts[i] > n) {
-            cuts[i] = n;
-        }
+        if (cuts[i] < cuts[i - 1]) cuts[i] = cuts[i - 1];
+        if (cuts[i] > n) cuts[i] = n;
     }
     cuts.back() = n;
 
-    for (std::size_t g = 0; g < loads.size(); ++g) {
+    for (std::size_t g = 0; g < cumulative.size(); ++g) {
         DevicePartition dp;
         dp.device_global_index = static_cast<int>(g);
         dp.owning_rank = owner_rank_of_global_device(static_cast<int>(g));
@@ -1341,6 +1345,7 @@ std::vector<DevicePartition> partitions_from_loads(const std::vector<float>& loa
     }
 
     std::vector<double> compute_balance_window_elapsed_local() {
+        synchronize(false);
         std::vector<double> elapsed(local_devices_.size(), 0.0);
 
         for (std::size_t d = 0; d < local_devices_.size(); ++d) {
@@ -2218,6 +2223,7 @@ inline bool maybe_rebalance_from_timings(FieldHandle target_field, float thresho
         if (rank_ == 0) {
             std::cout << "  action=skip\n";
         }
+        reset_balance_window_events();
         return false;
     }
 
@@ -2574,6 +2580,7 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
             std::cout << "[DCL][profiled] iteration " << iteration_counter_
                       << ": skip (new partition identical)\n";
         }
+        reset_balance_window_events();
         return false;
     }
 
@@ -2586,9 +2593,12 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     for (std::size_t i = 0; i < partitions_.size(); ++i) {
         if (global_times[i] > T_comp_int) {
             T_comp_int = global_times[i];
+            
         }
 
         if (global_times[i] > 1.0e-12 && partitions_[i].element_count > 0) {
+            if (rank_ == 0) 
+            std::cout<<"Tempo global device "<<i<<": "<<global_times[i]<<"\n";
             C_total += static_cast<double>(partitions_[i].element_count) / global_times[i];
         }
     }
@@ -2680,6 +2690,7 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
         if (rank_ == 0) {
             std::cout << "  action=skip\n";
         }
+        reset_balance_window_events();
         return false;
     }
 

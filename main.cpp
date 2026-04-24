@@ -230,9 +230,7 @@ int main(int argc, char** argv) {
         if (runtime.rank() == 0) {
             std::cout << "=== PARTICOES INICIAIS ===\n";
             print_partitions(runtime.partitions());
-            std::cout << "Rebalanceamento dinamico habilitado\n";
-            std::cout << "  interval  = " << rebalance_interval << "\n";
-            std::cout << "  threshold = " << rebalance_threshold * 100.0f << "%\n\n";
+            
         }
 
         auto params_field = runtime.create_field({
@@ -362,16 +360,16 @@ int main(int argc, char** argv) {
             std::cout << "\n============================\n";
             std::cout << "ITERACAO " << iterations << "\n";
 
-             PrintMalhaCompletaUnida(
-                 malha.data(),
-                 parametros.data(),
-                 final_is_a ? "STATE_A_FINAL" : "STATE_B_FINAL"
-             );
+            //  PrintMalhaCompletaUnida(
+            //      malha.data(),
+            //      parametros.data(),
+            //      final_is_a ? "STATE_A_FINAL" : "STATE_B_FINAL"
+            //  );
 
             std::chrono::duration<double> elapsed_seconds = end - start;
             std::cout << "Tempo de execução: " << elapsed_seconds.count() << "s\n";
         }
-
+        runtime.synchronize(true);
         return 0;
     } catch (const dcl::Error& e) {
         std::cerr << "dcl error: " << e.what() << std::endl;
