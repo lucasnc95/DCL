@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <optional>
 #include <vector>
 #include <chrono>
@@ -163,6 +164,20 @@ static dcl::BalanceMode parse_balance_mode(const std::string& schedule, const st
     throw std::runtime_error("Invalid balance configuration. Use --balance-mode off|static|dynamic and --balance-strategy threshold|profiled");
 }
 
+static std::size_t checked_mul_size_t(std::size_t a, std::size_t b, const char* what) {
+    if (a != 0 && b > std::numeric_limits<std::size_t>::max() / a) {
+        throw std::overflow_error(std::string("Overflow computing ") + what);
+    }
+    return a * b;
+}
+
+static int checked_int_from_size_t(std::size_t value, const char* what) {
+    if (value > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        throw std::overflow_error(std::string(what) + " exceeds int range used by kernel parameters");
+    }
+    return static_cast<int>(value);
+}
+
 int main(int argc, char** argv) {
     try {
         using clock_t = std::chrono::steady_clock;
@@ -198,11 +213,30 @@ int main(int argc, char** argv) {
         const std::string balance_mode_str = parse_string_arg(argv + 1, argv + argc, "--balance-mode", "dynamic");
         const std::string balance_strategy_str = parse_string_arg(argv + 1, argv + argc, "--balance-strategy", "threshold");
         const std::string profiling_file = parse_string_arg(argv + 1, argv + argc, "--profiling-file", "profiling_results.txt");
+        const bool gather_final = parse_int_arg(argv + 1, argv + argc, "--gather-final", 1) != 0;
         const dcl::BalanceMode balance_mode = parse_balance_mode(balance_mode_str, balance_strategy_str);
 
-        const int total_elements = x * y * z;
+        if (x <= 0 || y <= 0 || z <= 0) {
+            throw std::runtime_error("Mesh dimensions must be positive");
+        }
+
+        const std::size_t xy =
+            checked_mul_size_t(static_cast<std::size_t>(x), static_cast<std::size_t>(y), "x*y");
+        const std::size_t total_elements_size =
+            checked_mul_size_t(xy, static_cast<std::size_t>(z), "x*y*z");
+        const int total_elements =
+            checked_int_from_size_t(total_elements_size, "x*y*z");
         const std::size_t tam =
-            static_cast<std::size_t>(total_elements) * MALHA_TOTAL_CELULAS;
+            checked_mul_size_t(total_elements_size, MALHA_TOTAL_CELULAS, "mesh storage");
+
+        checked_int_from_size_t(
+            checked_mul_size_t(xy, MALHA_TOTAL_CELULAS, "z stride"),
+            "z stride"
+        );
+        checked_int_from_size_t(
+            checked_mul_size_t(static_cast<std::size_t>(x), MALHA_TOTAL_CELULAS, "y stride"),
+            "y stride"
+        );
 
         std::vector<int> parametros(NUMERO_PARAMETROS_MALHA, 0);
         std::vector<float> malha(tam, 0.0f);
@@ -339,33 +373,34 @@ int main(int argc, char** argv) {
             }
         }
 
-        auto end = clock_t::now();
-
         const bool final_is_a = (iterations % 2 != 0);
         const dcl::FieldHandle final_field = final_is_a ? state_a : state_b;
-
-        //std::vector<float> gathered_final(tam, 0.0f);
-
-        runtime.gather(
-            final_field,
-            malha.data(),
-            malha.size() * sizeof(float)
-        );
-
+    
+       
+            runtime.gather(
+                final_field,
+                malha.data(),
+                malha.size() * sizeof(float)
+            );
+       
+     
+        auto end = clock_t::now();
 
         if (runtime.rank() == 0) {
+            
             std::cout << "\n=== PARTICOES FINAIS ===\n";
             print_partitions(runtime.partitions());
 
             std::cout << "\n============================\n";
             std::cout << "ITERACAO " << iterations << "\n";
-
-            //  PrintMalhaCompletaUnida(
-            //      malha.data(),
-            //      parametros.data(),
-            //      final_is_a ? "STATE_A_FINAL" : "STATE_B_FINAL"
-            //  );
-
+            
+                PrintMalhaCompletaUnida(
+                    malha.data(),
+                    parametros.data(),
+                    final_is_a ? "STATE_A_FINAL" : "STATE_B_FINAL"
+                );
+            
+            
             std::chrono::duration<double> elapsed_seconds = end - start;
             std::cout << "Tempo de execução: " << elapsed_seconds.count() << "s\n";
         }

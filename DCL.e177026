@@ -1,7 +1,0 @@
-=>> PBS: job killed: walltime 5446 exceeded limit 5400
-[mpiexec@compute-0-11] HYDU_sock_write (utils/sock/sock.c:254): write error (Bad file descriptor)
-[mpiexec@compute-0-11] HYD_pmcd_pmiserv_send_signal (pm/pmiserv/pmiserv_cb.c:176): unable to write data to proxy
-[mpiexec@compute-0-11] ui_cmd_cb (pm/pmiserv/pmiserv_pmci.c:42): unable to send signal downstream
-[mpiexec@compute-0-11] HYDT_dmxu_poll_wait_for_event (tools/demux/demux_poll.c:76): callback returned error status
-[mpiexec@compute-0-11] HYD_pmci_wait_for_completion (pm/pmiserv/pmiserv_pmci.c:160): error waiting for event
-[mpiexec@compute-0-11] main (ui/mpich/mpiexec.c:326): process manager error waiting for completion
