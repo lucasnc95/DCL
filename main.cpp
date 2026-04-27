@@ -204,12 +204,12 @@ int main(int argc, char** argv) {
 
         const int x = parse_int_arg(argv + 1, argv + argc, "--x", 50);
         const int y = parse_int_arg(argv + 1, argv + argc, "--y", 50);
-        const int z = parse_int_arg(argv + 1, argv + argc, "--z", 320);
+        const int z = parse_int_arg(argv + 1, argv + argc, "--z", 3200);
 
         const int iterations = parse_int_arg(argv + 1, argv + argc, "--iterations", 10000);
 
         const int rebalance_interval = parse_int_arg(argv + 1, argv + argc, "--rebalance-interval", 1000);
-        const float rebalance_threshold = parse_float_arg(argv + 1, argv + argc, "--rebalance-threshold", 0.05f);
+        const float rebalance_threshold = parse_float_arg(argv + 1, argv + argc, "--rebalance-threshold", 0.0003125f);
         const std::string balance_mode_str = parse_string_arg(argv + 1, argv + argc, "--balance-mode", "dynamic");
         const std::string balance_strategy_str = parse_string_arg(argv + 1, argv + argc, "--balance-strategy", "threshold");
         const std::string profiling_file = parse_string_arg(argv + 1, argv + argc, "--profiling-file", "profiling_results.txt");
@@ -372,7 +372,9 @@ int main(int argc, char** argv) {
                 runtime.execute(step_b_from_a);
             }
         }
-
+        runtime.synchronize(true);
+        auto end = clock_t::now();
+        /*
         const bool final_is_a = (iterations % 2 != 0);
         const dcl::FieldHandle final_field = final_is_a ? state_a : state_b;
     
@@ -384,7 +386,7 @@ int main(int argc, char** argv) {
             );
        
      
-        auto end = clock_t::now();
+       */ 
 
         if (runtime.rank() == 0) {
             
@@ -393,18 +395,18 @@ int main(int argc, char** argv) {
 
             std::cout << "\n============================\n";
             std::cout << "ITERACAO " << iterations << "\n";
-            
+            /*
                 PrintMalhaCompletaUnida(
                     malha.data(),
                     parametros.data(),
                     final_is_a ? "STATE_A_FINAL" : "STATE_B_FINAL"
                 );
             
-            
+            */
             std::chrono::duration<double> elapsed_seconds = end - start;
             std::cout << "Tempo de execução: " << elapsed_seconds.count() << "s\n";
         }
-        runtime.synchronize(true);
+        
         return 0;
     } catch (const dcl::Error& e) {
         std::cerr << "dcl error: " << e.what() << std::endl;

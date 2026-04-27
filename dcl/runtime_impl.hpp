@@ -1792,8 +1792,6 @@ std::vector<float> loads_from_partitions(const std::vector<DevicePartition>& par
                             const KernelInvocation& ki,
                             std::vector<std::pair<std::size_t, cl_event>>& kernel_events,
                             std::size_t halo) {
-          //  auto now = std::chrono::system_clock::now();
-          //  std::cout << "Running interior phase with halo=" <<std::format("{:%F %T}", now) << "\n";
         for (std::size_t p = 0; p < partitions_.size(); ++p) {
             const DevicePartition& dp = partitions_[p];
             if (dp.owning_rank != rank_ || dp.local_index < 0) continue;
@@ -1904,8 +1902,6 @@ std::vector<float> loads_from_partitions(const std::vector<DevicePartition>& par
     }
 
     void exchange_halo_set(const HaloSpec& hs) {
-            //auto now = std::chrono::system_clock::now();
-           // std::cout << "Running halo exchange at " <<std::format("{:%F %T}", now) << "\n";
         if (hs.width_elements == 0) return;
         for (std::size_t i = 0; i < hs.fields.size(); ++i) {
             exchange_halos_for_field(hs.fields[i], hs.width_elements);
@@ -2533,8 +2529,9 @@ inline bool maybe_rebalance_from_timings(FieldHandle target_field, float thresho
         }
         diff_l2 = std::sqrt(diff_l2);
     }
-
+/*
     if (rank_ == 0) {
+        
         std::cout << "[DCL][threshold] balance attempt:\n";
         std::cout << "  OLD loads:\n";
         detail::print_loads_debug(current_loads_);
@@ -2547,18 +2544,18 @@ inline bool maybe_rebalance_from_timings(FieldHandle target_field, float thresho
             << "  l2_diff=" << (100.0 * diff_l2) << "% "
             << "threshold=" << (100.0f * threshold) << "%\n";
     }
-
+*/
     if (diff_l2 < static_cast<double>(threshold)) {
-        if (rank_ == 0) {
-            std::cout << "  action=skip\n";
-        }
+       // if (rank_ == 0) {
+          //  std::cout << "  action=skip\n";
+       // }
         reset_balance_window_events();
         return false;
     }
 
-    if (rank_ == 0) {
-        std::cout << "  action=rebalance\n";
-    }
+  //  if (rank_ == 0) {
+   //     std::cout << "  action=rebalance\n";
+  //  }
 
     this->rebalance_to(effective_new_loads);
     return true;
@@ -2730,10 +2727,10 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
 
     if (same) {
         current_loads_ = loads_from_partitions(partitions_);
-        if (rank_ == 0) {
-            std::cout << "[DCL][profiled] iteration " << iteration_counter_
-                      << ": skip (new partition identical)\n";
-        }
+  //      if (rank_ == 0) {
+    //        std::cout << "[DCL][profiled] iteration " << iteration_counter_
+    //                  << ": skip (new partition identical)\n";
+    //    }
         reset_balance_window_events();
         return false;
     }
@@ -2834,7 +2831,7 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     // ---------------------------------------------------------------------
     // 7. Logs
     // ---------------------------------------------------------------------
-    if (rank_ == 0) {
+  /*  if (rank_ == 0) {
         std::cout
             << "[DCL][profiled] iteration " << iteration_counter_ << ":\n"
             << "  remaining_iterations=" << remaining_iterations << "\n"
@@ -2852,7 +2849,7 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
 
             std::cout << "  EFFECTIVE loads:\n";
             detail::print_loads_debug(effective_new_loads);
-    }
+    }*/
 
     // ---------------------------------------------------------------------
     // 8. Decisão
@@ -2889,16 +2886,16 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     }
 
     if (local_should_rebalance == 0) {
-        if (rank_ == 0) {
-            std::cout << "  action=skip\n";
-        }
+    //    if (rank_ == 0) {
+       //     std::cout << "  action=skip\n";
+      //  }
         reset_balance_window_events();
         return false;
     }
 
-    if (rank_ == 0) {
-        std::cout << "  action=rebalance\n";
-    }
+ //   if (rank_ == 0) {
+  //      std::cout << "  action=rebalance\n";
+  //  }
 
     // ---------------------------------------------------------------------
     // 9. Aplica rebalanceamento

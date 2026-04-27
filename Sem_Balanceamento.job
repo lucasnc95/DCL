@@ -1,0 +1,16 @@
+#!/bin/bash
+#PBS -N DCL_OFF
+#PBS -o Results/job_off.out
+#PBS -l nodes=compute-3-3:ppn=16+compute-3-4:ppn=16+compute-3-6:ppn=16+compute-3-7:ppn=16
+
+cd $PBS_O_WORKDIR
+
+mkdir -p Results
+
+cat $PBS_NODEFILE
+sort $PBS_NODEFILE | uniq > machines2
+cat machines2
+
+export LD_LIBRARY_PATH=/share/apps/AMDAPPSDK-3.0/lib/x86_64/:$LD_LIBRARY_PATH
+
+/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 4 -machinefile machines2 ./HIS.out --x 50 --y 50 --z 3200 --iterations 100000 --gather-final 0 --balance-mode off
