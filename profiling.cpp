@@ -87,12 +87,18 @@ DadoBruto Run_Ping_Pong(std::size_t volume, int meu_rank, const OclContext& ocl)
     }
 
     int iteracoes = (volume < 1048576) ? 500 : 50; 
+    
+    std::vector<double> tempos_rtt;
+    if (meu_rank == 0) {
+        tempos_rtt.reserve(iteracoes);
+    }
+
     MPI_Barrier(MPI_COMM_WORLD);
 
-    double tempo_inicio = MPI_Wtime();
-    
     for(int i = 0; i < iteracoes; i++) {
         if (meu_rank == 0) {
+            double tempo_inicio_iter = MPI_Wtime();
+            
             // 1. Lê da GPU para o Host
             if (ocl.valid && volume > 0) {
                 clEnqueueReadBuffer(ocl.queue, dev_send, CL_TRUE, 0, volume, host_send.data(), 0, nullptr, nullptr);
@@ -105,6 +111,10 @@ DadoBruto Run_Ping_Pong(std::size_t volume, int meu_rank, const OclContext& ocl)
             if (ocl.valid && volume > 0) {
                 clEnqueueWriteBuffer(ocl.queue, dev_recv, CL_TRUE, 0, volume, host_recv.data(), 0, nullptr, nullptr);
             }
+            
+            double tempo_fim_iter = MPI_Wtime();
+            tempos_rtt.push_back(tempo_fim_iter - tempo_inicio_iter);
+            
         } else if (meu_rank == 1) {
             MPI_Recv(host_recv.data(), volume, MPI_BYTE, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             if (ocl.valid && volume > 0) {
@@ -115,8 +125,6 @@ DadoBruto Run_Ping_Pong(std::size_t volume, int meu_rank, const OclContext& ocl)
         }
     }
     
-    double tempo_fim = MPI_Wtime();
-
     if (ocl.valid && volume > 0) {
         clReleaseMemObject(dev_send);
         clReleaseMemObject(dev_recv);
@@ -125,10 +133,19 @@ DadoBruto Run_Ping_Pong(std::size_t volume, int meu_rank, const OclContext& ocl)
     DadoBruto resultado = {volume, 0.0};
 
     if (meu_rank == 0) {
-        double rtt_medio = (tempo_fim - tempo_inicio) / iteracoes;
-        resultado.tempo_migracao = rtt_medio / 2.0; // Pega exatamente o tempo de 1 via
+        std::sort(tempos_rtt.begin(), tempos_rtt.end());
+        
+        double rtt_mediana = 0.0;
+        if (iteracoes % 2 == 0) {
+            rtt_mediana = (tempos_rtt[iteracoes / 2 - 1] + tempos_rtt[iteracoes / 2]) / 2.0;
+        } else {
+            rtt_mediana = tempos_rtt[iteracoes / 2];
+        }
+
+        resultado.tempo_migracao = rtt_mediana / 2.0; // Pega exatamente o tempo de 1 via
         std::cout << "Coletado volume: " << volume << " bytes." << std::endl;
     }
+    
     return resultado;
 }
 
