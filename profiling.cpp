@@ -62,7 +62,7 @@ OclContext Inicializar_OpenCL(int meu_rank) {
 // 2. GERAÇÃO DO VETOR
 // ============================================================================
 std::vector<std::size_t> Gerar_Vetor_Volumes() {
-    std::vector<std::size_t> vetor = {0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 
+    std::vector<std::size_t> vetor = {0, 1, 512, 1024, 
                                       1500, 2048, 4096, 8192, 16384, 32768, 65536, 
                                       131072, 262144, 524288, 1048576, 4194304, 16777216};
 
