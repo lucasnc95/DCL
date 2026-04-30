@@ -2781,24 +2781,43 @@ inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalance
     // ---------------------------------------------------------------------
     std::vector<std::size_t> rank_recv_bytes(static_cast<std::size_t>(size_), 0ull);
 
-    auto count_migration_bytes = [&](const detail::RegisteredField& field) {
-        const std::size_t elem_bytes =
-            field.spec.units_per_element * field.spec.bytes_per_unit;
-
-        for (const auto& src : old_parts) {
-            for (const auto& dst : new_parts) {
-                std::size_t off = 0;
-                std::size_t len = 0;
-
-                if (detail::intersect_1d(
-                        src.global_offset, src.element_count,
-                        dst.global_offset, dst.element_count,
-                        off, len)) {
-
-                    if (len > 0 && src.owning_rank != dst.owning_rank) {
-                        rank_recv_bytes[static_cast<std::size_t>(dst.owning_rank)] += len * elem_bytes;
-                    }
+    auto count_migration_bytes = [&](FieldHandle fh) {
+        auto fit = fields_.find(fh.value);
+        if (fit == fields_.end()) return;
+        std::size_t elem_bytes = fit->second.spec.units_per_element * fit->second.spec.bytes_per_unit;
+        
+        std::size_t src_idx = 0;
+        std::size_t dst_idx = 0;
+        
+        // Percorre as partições em tempo linear O(N)
+        while (src_idx < old_parts.size() && dst_idx < new_parts.size()) {
+            const auto& src = old_parts[src_idx];
+            const auto& dst = new_parts[dst_idx];
+            
+            // Calcula o início e o fim da possível intersecção
+            std::size_t start = std::max(src.global_offset, dst.global_offset);
+            std::size_t src_end = src.global_offset + src.element_count;
+            std::size_t dst_end = dst.global_offset + dst.element_count;
+            std::size_t end = std::min(src_end, dst_end);
+            
+            // Se houver sobreposição espacial
+            if (start < end) {
+                std::size_t len = end - start;
+                // Contabiliza rede apenas se a fatia cruzar a fronteira entre Ranks
+                if (src.owning_rank != dst.owning_rank) {
+                    rank_recv_bytes[dst.owning_rank] += len * elem_bytes;
                 }
+            }
+            
+            // Avança o ponteiro da partição que termina primeiro
+            if (src_end < dst_end) {
+                src_idx++;
+            } else if (dst_end < src_end) {
+                dst_idx++;
+            } else {
+                // Se ambas terminam exatamente no mesmo índice, avançamos as duas
+                src_idx++;
+                dst_idx++;
             }
         }
     };
