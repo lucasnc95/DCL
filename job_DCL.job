@@ -21,7 +21,109 @@ sort $PBS_NODEFILE | uniq > machines2
 cat machines2
 
 export LD_LIBRARY_PATH=/share/apps/AMDAPPSDK-3.0/lib/x86_64/:$LD_LIBRARY_PATH
-# Launch MPI-based executable
-#/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 4 -machinefile machines2 ./profiling.out 
-#/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 4 -machinefile machines2 ./HIS.out --x 250 --y 250 --z 250 --iterations 1000  --gather-final 1 --balance-mode off #--balance-strategy profiled --rebalance-interval 100 --profiling-file profiling_results.txt 
-/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 4 -machinefile machines2 ./HIS.out --x 250 --y 250 --z 250 --iterations 1000 --balance-mode dynamic --balance-strategy threshold --rebalance-interval 100 --rebalance-threshold 0.0025 --profiling-file profiling_results.txt --gather-final 1
+
+# Launch profiling executable before the loops
+/opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np 4 -machinefile machines2 ./profiling.out 
+
+# Arquivos de resultados
+RESULT_FILE="resultados_testes.txt"
+TMP_SUMMARY="tabela_resumo_temp.txt"
+
+# Inicializa o arquivo de resultados
+echo "Tabela de resultados:" > $RESULT_FILE
+echo "NP | Iterations | Bloco | Média Desvio Padrão (s)" >> $RESULT_FILE
+echo "" >> $RESULT_FILE
+echo "---" >> $RESULT_FILE
+echo "" >> $RESULT_FILE
+
+> $TMP_SUMMARY
+
+# Função para calcular média e desvio padrão usando awk
+calcular_estatisticas() {
+    awk '{
+        sum+=$1; sumsq+=$1*$1; vals[NR]=$1 
+    } END {
+        mean = sum / NR; 
+        stddev = sqrt((sumsq / NR) - (mean * mean)); 
+        printf "%.4f %.4f", mean, stddev
+    }'
+}
+
+# Loop de NP (1, 2, 4)
+for np in 1 2 4; do
+    echo "Testes com -np $np:" >> $RESULT_FILE
+    
+    # Loop de Iterations (1000, 10000)
+    for iter in 1000 10000; do
+        echo "    --iterations $iter --rebalance-interval 100:" >> $RESULT_FILE
+        
+        # ==========================================================
+        # BLOCO 1: Balanceamento baseado em profiling (Balance Mode Off)
+        # ==========================================================
+        echo "        Balanceamento baseado em profiling" >> $RESULT_FILE
+        > tempos_tmp.txt
+        
+        for run in {1..10}; do
+            start_time=$(date +%s.%N)
+            
+            # Execução 1
+            /opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np $np -machinefile machines2 ./HIS.out --x 50 --y 50 --z 6400 --iterations $iter --gather-final 1 --balance-mode off
+            
+            end_time=$(date +%s.%N)
+            
+            # Calculando tempo gasto
+            elapsed=$(awk -v start=$start_time -v end=$end_time 'BEGIN {printf "%.4f", end - start}')
+            echo "$elapsed" >> tempos_tmp.txt
+            echo "            t$run: ${elapsed}s" >> $RESULT_FILE
+        done
+        
+        # Estatísticas Bloco 1
+        stats=$(cat tempos_tmp.txt | calcular_estatisticas)
+        media_prof=$(echo $stats | awk '{print $1}')
+        desvio_prof=$(echo $stats | awk '{print $2}')
+        echo "        Média e desvio padrão: ${media_prof}s ± ${desvio_prof}s" >> $RESULT_FILE
+        
+        # Salva para a tabela resumo do final
+        echo "$np | $iter | Profiling | ${media_prof}s ± ${desvio_prof}s" >> $TMP_SUMMARY
+
+        # ==========================================================
+        # BLOCO 2: Balanceamento com threshold fixo (Balance Mode Dynamic)
+        # ==========================================================
+        echo "        Balanceamento com threshold fixo" >> $RESULT_FILE
+        > tempos_tmp.txt
+        
+        for run in {1..10}; do
+            start_time=$(date +%s.%N)
+            
+            # Execução 2
+            /opt/ohpc/pub/mpi/mpich-ofi-gnu13-ohpc/3.4.3/bin/mpiexec -np $np -machinefile machines2 ./HIS.out --x 50 --y 50 --z 6400 --iterations $iter --balance-mode dynamic --balance-strategy threshold --rebalance-interval 100 --rebalance-threshold 0.0025 --profiling-file profiling_results.txt --gather-final 1
+            
+            end_time=$(date +%s.%N)
+            
+            # Calculando tempo gasto
+            elapsed=$(awk -v start=$start_time -v end=$end_time 'BEGIN {printf "%.4f", end - start}')
+            echo "$elapsed" >> tempos_tmp.txt
+            echo "            t$run: ${elapsed}s" >> $RESULT_FILE
+        done
+        
+        # Estatísticas Bloco 2
+        stats=$(cat tempos_tmp.txt | calcular_estatisticas)
+        media_thresh=$(echo $stats | awk '{print $1}')
+        desvio_thresh=$(echo $stats | awk '{print $2}')
+        echo "        Média e desvio padrão: ${media_thresh}s ± ${desvio_thresh}s" >> $RESULT_FILE
+        
+        # Salva para a tabela resumo do final
+        echo "$np | $iter | Threshold | ${media_thresh}s ± ${desvio_thresh}s" >> $TMP_SUMMARY
+        
+    done
+done
+
+# Adiciona a Tabela Resumo ao final do arquivo
+echo "" >> $RESULT_FILE
+echo "---" >> $RESULT_FILE
+echo "Tabela Resumo:" >> $RESULT_FILE
+echo "NP | Iterations | Bloco | Média Desvio Padrão (s)" >> $RESULT_FILE
+cat $TMP_SUMMARY >> $RESULT_FILE
+
+# Remove arquivos temporários
+rm -f tempos_tmp.txt $TMP_SUMMARY
