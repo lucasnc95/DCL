@@ -674,7 +674,9 @@ public:
                 release_kernel_events(full_events);
             }
 
-            extract_rw_fields(step, ki.binding);
+            last_input_fields_.clear();
+            last_output_fields_.clear();
+            extract_rw_fields(ki.binding);
         }
 
         ++iteration_counter_;
@@ -683,26 +685,18 @@ public:
             const bool interval_hit =
                 (iteration_counter_ % static_cast<std::size_t>(every)) == 0;
 
-            std::vector<FieldHandle> rebalance_fields =
-                fields_with_role(step, StepFieldRole::rebalance_source);
+            const std::optional<FieldHandle> tagged_target =
+                this->first_field_with_role(step, StepFieldRole::rebalance_source);
 
-            // Fallbacks preserve compatibility with older code that did not use
-            // explicit rebalance_source tags. For swap-buffered steps, prefer
-            // explicit tags because they identify the active buffer(s) only.
-            if (rebalance_fields.empty()) {
-                rebalance_fields = fields_with_role(step, StepFieldRole::read_source);
-            }
-            if (rebalance_fields.empty()) {
-                rebalance_fields = last_input_fields_;
-            }
-            if (rebalance_fields.empty()) {
-                rebalance_fields = last_output_fields_;
-            }
+            const std::optional<FieldHandle> fallback_target =
+                !last_input_fields_.empty() ? std::optional<FieldHandle>(last_input_fields_.front())
+                                            : (!last_output_fields_.empty() ? std::optional<FieldHandle>(last_output_fields_.front())
+                                                                            : std::nullopt);
 
-            rebalance_fields = unique_existing_proportional_fields(rebalance_fields);
+            const std::optional<FieldHandle> target_opt = tagged_target.has_value() ? tagged_target : fallback_target;
 
             bool should_try = false;
-            if (!rebalance_fields.empty()) {
+            if (target_opt.has_value()) {
                 if (step.balance.mode == BalanceMode::dynamic_threshold ||
                     step.balance.mode == BalanceMode::dynamic_profiled) {
                     should_try = interval_hit;
@@ -716,13 +710,15 @@ public:
                 }
             }
 
-            if (should_try && !rebalance_fields.empty()) {
+            if (should_try && target_opt.has_value()) {
+                const FieldHandle target = *target_opt;
+
                 if (step.balance.mode == BalanceMode::dynamic_threshold ||
                     step.balance.mode == BalanceMode::static_threshold) {
-                    this->maybe_rebalance_from_timings(rebalance_fields, step.balance.threshold);
+                    this->maybe_rebalance_from_timings(target, step.balance.threshold);
                 } else if (step.balance.mode == BalanceMode::dynamic_profiled ||
                            step.balance.mode == BalanceMode::static_profiled) {
-                    this->maybe_rebalance_profiled(rebalance_fields, step.balance, step.balance.interval);
+                    this->maybe_rebalance_profiled(target, step.balance, step.balance.interval);
                 }
             }
         }
@@ -739,6 +735,7 @@ public:
             throw Error("rebalance_to(): loads size must match number of partitions");
         }
 
+        // From now on, loads is cumulative: [0.10, 0.20, ..., 1.00].
         std::vector<float> cumulative = loads;
         float prev = 0.0f;
         for (std::size_t i = 0; i < cumulative.size(); ++i) {
@@ -775,7 +772,7 @@ public:
         if (same) {
             current_loads_ = loads_from_partitions(partitions_);
             reset_balance_window_events();
-            print_partition_loads(current_loads_);
+           // print_partition_loads(current_loads_);
             return;
         }
 
@@ -785,10 +782,62 @@ public:
         current_loads_ = loads_from_partitions(partitions_);
         this->synchronize(true);
         reset_balance_window_events();
-        print_partition_loads(current_loads_);
+      //  print_partition_loads(current_loads_);
     }
 
-    
+    // void gather(FieldHandle field, void* host_dst, std::size_t bytes) {
+    //     auto fit = fields_.find(field.value);
+    //     if (fit == fields_.end()) throw Error("Unknown field in gather()");
+    //     if (host_dst == nullptr) throw Error("gather() host_dst is null");
+
+    //     detail::RegisteredField& rf = fit->second;
+    //     const std::size_t total_bytes = rf.spec.global_elements * rf.spec.units_per_element * rf.spec.bytes_per_unit;
+    //     if (bytes < total_bytes) throw Error("gather() destination buffer too small");
+
+    //     std::vector<unsigned char> local_image(total_bytes, 0);
+    //     std::vector<cl_event> read_events;
+
+    //     for (std::size_t p = 0; p < partitions_.size(); ++p) {
+    //         const DevicePartition& dp = partitions_[p];
+    //         if (dp.owning_rank != rank_ || dp.local_index < 0) continue;
+
+    //         const std::size_t d = static_cast<std::size_t>(dp.local_index);
+    //         const std::size_t off = dp.global_offset * rf.spec.units_per_element * rf.spec.bytes_per_unit;
+    //         const std::size_t len = dp.element_count * rf.spec.units_per_element * rf.spec.bytes_per_unit;
+    //         cl_event ev = nullptr;
+
+    //         detail::check_cl(
+    //             clEnqueueReadBuffer(
+    //                 local_devices_[d].transfer_queue,
+    //                 rf.replicas[d],
+    //                 CL_FALSE,
+    //                 off,
+    //                 len,
+    //                 local_image.data() + off,
+    //                 0,
+    //                 nullptr,
+    //                 &ev
+    //             ),
+    //             "clEnqueueReadBuffer(gather)"
+    //         );
+    //         read_events.push_back(ev);
+    //     }
+
+    //     for (cl_event ev : read_events) {
+    //         if (ev != nullptr) {
+    //             detail::check_cl(clWaitForEvents(1, &ev), "clWaitForEvents(gather)");
+    //             clReleaseEvent(ev);
+    //         }
+    //     }
+
+    //     if (rank_ == 0) {
+    //         std::vector<unsigned char> reduced(total_bytes, 0);
+    //         reduce_bytes_bor(local_image.data(), reduced.data(), total_bytes, 0);
+    //         std::memcpy(host_dst, reduced.data(), total_bytes);
+    //     } else {
+    //         reduce_bytes_bor(local_image.data(), nullptr, total_bytes, 0);
+    //     }
+    // }
 
     void gather(FieldHandle field, void* host_dst, std::size_t bytes) {
         auto fit = fields_.find(field.value);
@@ -1391,35 +1440,6 @@ std::vector<float> loads_from_partitions(const std::vector<DevicePartition>& par
         return out;
     }
 
-    std::vector<FieldHandle> unique_existing_proportional_fields(
-        const std::vector<FieldHandle>& input
-    ) const {
-        std::vector<int> ids;
-        ids.reserve(input.size());
-
-        for (FieldHandle fh : input) {
-            std::unordered_map<int, detail::RegisteredField>::const_iterator it =
-                fields_.find(fh.value);
-            if (it == fields_.end()) {
-                continue;
-            }
-            if (it->second.spec.redistribution != RedistributionDependency::proportional) {
-                continue;
-            }
-            ids.push_back(fh.value);
-        }
-
-        std::sort(ids.begin(), ids.end());
-        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
-
-        std::vector<FieldHandle> out;
-        out.reserve(ids.size());
-        for (int id : ids) {
-            out.push_back(FieldHandle{id});
-        }
-        return out;
-    }
-
     std::optional<FieldHandle> first_field_with_role(const ExecutionStep& step, StepFieldRole role) {
         for (const StepFieldTag& tag : step.field_tags) {
             if (tag.role == role) return tag.field;
@@ -1427,19 +1447,7 @@ std::vector<float> loads_from_partitions(const std::vector<DevicePartition>& par
         return std::nullopt;
     }
 
-    void extract_rw_fields(const ExecutionStep& step, const KernelBinding& binding) {
-        last_input_fields_.clear();
-        last_output_fields_.clear();
-
-        last_input_fields_ = fields_with_role(step, StepFieldRole::read_source);
-        last_output_fields_ = fields_with_role(step, StepFieldRole::write_target);
-
-        if (!last_input_fields_.empty() || !last_output_fields_.empty()) {
-            return;
-        }
-
-        // Fallback for old kernels that rely on positional convention:
-        // arg0 = output, arg1 = input.
+    void extract_rw_fields(const KernelBinding& binding) {
         for (std::size_t i = 0; i < binding.args.size(); ++i) {
             const unsigned idx = binding.args[i].first;
             const KernelArg& arg = binding.args[i].second;
@@ -2427,31 +2435,30 @@ inline void rebalance(FieldHandle target_field) {
         return;
     }
 
+    // Igual ao rebalance_to(): todos os campos proporcionais precisam acompanhar
+    // a nova particao. Migrar so o campo usado para medir tempos deixa o outro
+    // buffer do ping-pong em particoes antigas e quebra o gather final.
     this->synchronize(true);
-    this->redistribute_selected_registered_fields(
-        std::vector<FieldHandle>{target_field},
-        old_parts,
-        new_parts
-    );
+
+    this->redistribute_all_registered_fields(old_parts, new_parts);
+
     partitions_ = new_parts;
     current_loads_ = loads_from_partitions(partitions_);
+
+    // Igual ao rebalance_to(): sincroniza depois
     this->synchronize(true);
 }
 
 
 
-inline bool maybe_rebalance_from_timings(
-    const std::vector<FieldHandle>& requested_rebalance_fields,
-    float threshold
-) {
+inline bool maybe_rebalance_from_timings(FieldHandle target_field, float threshold) {
     if (!partition_.has_value()) return false;
     if (partitions_.empty()) return false;
 
-    const std::vector<FieldHandle> rebalance_fields =
-        unique_existing_proportional_fields(requested_rebalance_fields);
-    if (rebalance_fields.empty()) {
-        reset_balance_window_events();
-        return false;
+    std::unordered_map<int, detail::RegisteredField>::iterator fit =
+        fields_.find(target_field.value);
+    if (fit == fields_.end()) {
+        throw Error("maybe_rebalance_from_timings(): unknown field");
     }
 
     const std::vector<double> measured_elapsed = compute_balance_window_elapsed_local();
@@ -2482,10 +2489,7 @@ inline bool maybe_rebalance_from_timings(
     const std::vector<float> proposed_loads =
         detail::compute_loads_from_partition_throughput(global_times, partitions_);
 
-    if (proposed_loads.empty()) {
-        reset_balance_window_events();
-        return false;
-    }
+    if (proposed_loads.empty()) return false;
 
     const std::vector<DevicePartition> old_parts = partitions_;
     const std::vector<DevicePartition> new_parts = partitions_from_loads(proposed_loads);
@@ -2493,7 +2497,6 @@ inline bool maybe_rebalance_from_timings(
         reset_balance_window_events();
         return false;
     }
-
     const std::vector<float> effective_new_loads = loads_from_partitions(new_parts);
 
     bool same = (old_parts.size() == new_parts.size());
@@ -2526,19 +2529,35 @@ inline bool maybe_rebalance_from_timings(
         }
         diff_l2 = std::sqrt(diff_l2);
     }
+/*
+    if (rank_ == 0) {
+        
+        std::cout << "[DCL][threshold] balance attempt:\n";
+        std::cout << "  OLD loads:\n";
+        detail::print_loads_debug(current_loads_);
 
+        std::cout << "  PROPOSED loads:\n";
+        detail::print_loads_debug(proposed_loads);
+        std::cout << "  EFFECTIVE loads:\n";
+        detail::print_loads_debug(effective_new_loads);
+        std::cout
+            << "  l2_diff=" << (100.0 * diff_l2) << "% "
+            << "threshold=" << (100.0f * threshold) << "%\n";
+    }
+*/
     if (diff_l2 < static_cast<double>(threshold)) {
+       // if (rank_ == 0) {
+          //  std::cout << "  action=skip\n";
+       // }
         reset_balance_window_events();
         return false;
     }
 
-    this->synchronize(true);
-    this->redistribute_selected_registered_fields(rebalance_fields, old_parts, new_parts);
-    partitions_ = new_parts;
-    current_loads_ = loads_from_partitions(partitions_);
-    this->synchronize(true);
-    reset_balance_window_events();
+  //  if (rank_ == 0) {
+   //     std::cout << "  action=rebalance\n";
+  //  }
 
+    this->rebalance_to(effective_new_loads);
     return true;
 }
 
@@ -2637,17 +2656,10 @@ double get_migration_overhead(std::size_t volume) const {
 
 
 
-inline bool maybe_rebalance_profiled(const std::vector<FieldHandle>& requested_rebalance_fields, const AutoBalancePolicy& policy, int interval) {
+inline bool maybe_rebalance_profiled(FieldHandle target_field, const AutoBalancePolicy& policy, int interval) {
     if (!partition_.has_value()) return false;
     if (partitions_.empty()) return false;
     if (policy.total_iterations <= 0) return false;
-
-    const std::vector<FieldHandle> rebalance_fields =
-        unique_existing_proportional_fields(requested_rebalance_fields);
-    if (rebalance_fields.empty()) {
-        reset_balance_window_events();
-        return false;
-    }
 
     if (!profiling_loaded_ || profiling_file_loaded_ != policy.profiling_file) {
         load_profiling_data(policy.profiling_file);
@@ -2816,8 +2828,9 @@ inline bool maybe_rebalance_profiled(const std::vector<FieldHandle>& requested_r
         }
     };
 
-    for (FieldHandle fh : rebalance_fields) {
-        count_migration_bytes(fh);
+    // CORREÇÃO: o lambda recebe FieldHandle, então usamos a chave do mapa.
+    for (const auto& kv : fields_) {
+        count_migration_bytes(FieldHandle{kv.first});
     }
 
     std::size_t max_v_migrado = 0;
@@ -2913,7 +2926,7 @@ inline bool maybe_rebalance_profiled(const std::vector<FieldHandle>& requested_r
     // 9. Aplica rebalanceamento
     // ---------------------------------------------------------------------
     this->synchronize(true);
-    this->redistribute_selected_registered_fields(rebalance_fields, old_parts, new_parts);
+    this->redistribute_all_registered_fields(old_parts, new_parts);
     partitions_ = new_parts;
     current_loads_ = loads_from_partitions(partitions_);
     this->synchronize(true);
@@ -3132,23 +3145,6 @@ inline void redistribute_field_proportional_delta(
     }
 
     this->synchronize_all_local_devices(false);
-}
-
-inline void redistribute_selected_registered_fields(
-    const std::vector<FieldHandle>& selected_fields,
-    const std::vector<DevicePartition>& old_parts,
-    const std::vector<DevicePartition>& new_parts
-) {
-    const std::vector<FieldHandle> fields_to_move =
-        unique_existing_proportional_fields(selected_fields);
-
-    for (FieldHandle fh : fields_to_move) {
-        this->redistribute_field_intersection(fh, old_parts, new_parts);
-        detail::check_mpi(
-            MPI_Barrier(comm_),
-            "MPI_Barrier(redistribute selected proportional field)"
-        );
-    }
 }
 
 inline void redistribute_all_registered_fields(

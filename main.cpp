@@ -5,6 +5,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <optional>
 #include <vector>
@@ -213,8 +215,10 @@ int main(int argc, char** argv) {
         const std::string balance_mode_str = parse_string_arg(argv + 1, argv + argc, "--balance-mode", "dynamic");
         const std::string balance_strategy_str = parse_string_arg(argv + 1, argv + argc, "--balance-strategy", "threshold");
         const std::string profiling_file = parse_string_arg(argv + 1, argv + argc, "--profiling-file", "profiling_results.txt");
+        const std::string timing_file = parse_string_arg(argv + 1, argv + argc, "--timing-file", "");
         const bool gather_final = parse_int_arg(argv + 1, argv + argc, "--gather-final", 1) != 0;
         const dcl::BalanceMode balance_mode = parse_balance_mode(balance_mode_str, balance_strategy_str);
+        gather_final = true; // gather is intentionally disabled for benchmark runs.
 
         if (x <= 0 || y <= 0 || z <= 0) {
             throw std::runtime_error("Mesh dimensions must be positive");
@@ -332,7 +336,7 @@ int main(int argc, char** argv) {
             .tag_field(state_b, dcl::StepFieldRole::read_source)
             .tag_field(state_a, dcl::StepFieldRole::write_target)
             .tag_field(state_b, dcl::StepFieldRole::halo_source)
-            .tag_field(state_b, dcl::StepFieldRole::rebalance_source)
+            .tag_field(state_a, dcl::StepFieldRole::rebalance_source)
             .synchronize_at_end(false)
             .build();
 
@@ -359,9 +363,13 @@ int main(int argc, char** argv) {
             .tag_field(state_a, dcl::StepFieldRole::read_source)
             .tag_field(state_b, dcl::StepFieldRole::write_target)
             .tag_field(state_a, dcl::StepFieldRole::halo_source)
-            .tag_field(state_a, dcl::StepFieldRole::rebalance_source)
+            .tag_field(state_b, dcl::StepFieldRole::rebalance_source)
             .synchronize_at_end(false)
             .build();
+        
+        if (runtime.rank() == 0) {
+        std::cout<<"X = "<<x<<" Y = "<<y<<" Z = "<<z<<" Iterations = "<<iterations<<std::endl;
+        }
 
         auto start = clock_t::now();
 
@@ -374,7 +382,7 @@ int main(int argc, char** argv) {
         }
         runtime.synchronize(true);
         auto end = clock_t::now();
-        /*
+        
         const bool final_is_a = (iterations % 2 != 0);
         const dcl::FieldHandle final_field = final_is_a ? state_a : state_b;
     
@@ -386,7 +394,7 @@ int main(int argc, char** argv) {
             );
        
      
-       */ 
+        
 
         if (runtime.rank() == 0) {
             
@@ -395,16 +403,28 @@ int main(int argc, char** argv) {
 
             std::cout << "\n============================\n";
             std::cout << "ITERACAO " << iterations << "\n";
-            /*
+            
                 PrintMalhaCompletaUnida(
                     malha.data(),
                     parametros.data(),
                     final_is_a ? "STATE_A_FINAL" : "STATE_B_FINAL"
                 );
             
-            */
+            
             std::chrono::duration<double> elapsed_seconds = end - start;
-            std::cout << "Tempo de execução: " << elapsed_seconds.count() << "s\n";
+            const double elapsed_value = elapsed_seconds.count();
+
+            if (!timing_file.empty()) {
+                std::ofstream timing_out(timing_file, std::ios::app);
+                if (!timing_out.is_open()) {
+                    std::cerr << "Erro ao abrir arquivo de tempos: " << timing_file << "\n";
+                    return 3;
+                }
+                // One numeric value per line. The PBS script reads this file to compute statistics.
+                timing_out << std::fixed << std::setprecision(9) << elapsed_value << "\n";
+            }
+
+            std::cout << "Tempo de execução: " << elapsed_value << "s\n";
         }
         
         return 0;
